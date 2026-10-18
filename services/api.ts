@@ -54,6 +54,10 @@ function friendlyMessage(error: unknown): string {
     return "Too many emails were requested. Please wait a minute and try again.";
   }
   if (/user already registered/i.test(message)) return "An account with this email already exists.";
+  if (/error getting user email from external provider/i.test(message)) {
+    // Facebook accounts created with a phone number, or a declined email permission.
+    return "We couldn't get an email address from that account. Please allow email access, or sign up with your email instead.";
+  }
   if (/jwt expired|invalid jwt/i.test(message)) return "Your session expired. Please sign in again.";
   if (/token has expired or is invalid/i.test(message)) return "That code is invalid or has expired.";
   if (/duplicate key.*match_requests_one_active/i.test(message)) {
@@ -259,7 +263,12 @@ export async function signInWithProvider(provider: "google" | "facebook"): Promi
   if (result.type !== "success") return false;
 
   const url = new URL(result.url);
-  const errorDescription = url.searchParams.get("error_description");
+  const hash = new URLSearchParams(url.hash.replace(/^#/, ""));
+  // Supabase may report OAuth errors in the query string or the fragment.
+  const oauthError = url.searchParams.get("error") ?? hash.get("error");
+  // Cancelling on the provider's page (or declining its permissions) isn't a failure.
+  if (oauthError === "access_denied") return false;
+  const errorDescription = url.searchParams.get("error_description") ?? hash.get("error_description");
   if (errorDescription) fail(errorDescription);
 
   const code = url.searchParams.get("code");
@@ -269,7 +278,6 @@ export async function signInWithProvider(provider: "google" | "facebook"): Promi
     return true;
   }
 
-  const hash = new URLSearchParams(url.hash.replace(/^#/, ""));
   const access_token = hash.get("access_token");
   const refresh_token = hash.get("refresh_token");
   if (access_token && refresh_token) {
