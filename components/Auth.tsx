@@ -709,7 +709,7 @@ export function Login() {
   const [password, setPassword] = useState("");
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
   const [loading, setLoading] = useState(false);
-  const [socialLoading, setSocialLoading] = useState<string | null>(null);
+  const [socialLoading, setSocialLoading] = useState(false);
 
   const submit = async () => {
     const next: typeof errors = {};
@@ -734,14 +734,14 @@ export function Login() {
     }
   };
 
-  const social = async (provider: "google" | "facebook") => {
-    setSocialLoading(provider);
+  const signInWithGoogle = async () => {
+    setSocialLoading(true);
     try {
-      await api.signInWithProvider(provider);
+      await api.signInWithGoogle();
     } catch (e) {
       showMessage("Sign in failed", api.errorMessage(e));
     } finally {
-      setSocialLoading(null);
+      setSocialLoading(false);
     }
   };
 
@@ -822,42 +822,29 @@ export function Login() {
             <Text style={{ marginHorizontal: 12, fontSize: 13, color: T.medium, fontFamily: FONT }}>or continue with</Text>
             <View style={{ flex: 1, height: 1, backgroundColor: T.border }} />
           </View>
-          <View style={{ gap: 12 }}>
-            {(["google", "facebook"] as const).map((provider) => (
-              <TouchableOpacity
-                key={provider}
-                onPress={() => social(provider)}
-                disabled={!!socialLoading}
-                activeOpacity={0.8}
-                style={{
-                  height: 52,
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 12,
-                  borderRadius: 16,
-                  borderWidth: 1,
-                  backgroundColor: T.white,
-                  borderColor: provider === "google" ? "rgba(255,99,27,0.3)" : "rgba(0,86,255,0.3)",
-                }}
-              >
-                {socialLoading === provider ? (
-                  <ActivityIndicator color={T.primary} />
-                ) : (
-                  <Image
-                    source={provider === "google" ? require("./Logo/google.png") : require("./Logo/facebook.png")}
-                    style={provider === "google" ? { width: 24, height: 24 } : { width: 30, height: 30, marginVertical: -3 }}
-                    resizeMode="contain"
-                  />
-                )}
-                <Text
-                  style={{ fontSize: 15, fontFamily: FONT_BOLD, color: provider === "google" ? "#ff631b" : "#0056ff" }}
-                >
-                  Continue with {provider === "google" ? "Google" : "Facebook"}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+          <TouchableOpacity
+            onPress={signInWithGoogle}
+            disabled={socialLoading}
+            activeOpacity={0.8}
+            style={{
+              height: 52,
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 12,
+              borderRadius: 16,
+              borderWidth: 1,
+              backgroundColor: T.white,
+              borderColor: "rgba(255,99,27,0.3)",
+            }}
+          >
+            {socialLoading ? (
+              <ActivityIndicator color={T.primary} />
+            ) : (
+              <Image source={require("./Logo/google.png")} style={{ width: 24, height: 24 }} resizeMode="contain" />
+            )}
+            <Text style={{ fontSize: 15, fontFamily: FONT_BOLD, color: "#ff631b" }}>Continue with Google</Text>
+          </TouchableOpacity>
         </>
       )}
     </AuthShell>

@@ -55,7 +55,6 @@ function friendlyMessage(error: unknown): string {
   }
   if (/user already registered/i.test(message)) return "An account with this email already exists.";
   if (/error getting user email from external provider/i.test(message)) {
-    // Facebook accounts created with a phone number, or a declined email permission.
     return "We couldn't get an email address from that account. Please allow email access, or sign up with your email instead.";
   }
   if (/jwt expired|invalid jwt/i.test(message)) return "Your session expired. Please sign in again.";
@@ -216,25 +215,26 @@ export async function changePassword(newPassword: string) {
 
 export const socialLoginEnabled = process.env.EXPO_PUBLIC_ENABLE_SOCIAL_LOGIN === "true";
 
-async function isProviderEnabled(provider: "google" | "facebook"): Promise<boolean> {
+async function isGoogleEnabled(): Promise<boolean> {
   try {
     const res = await fetch(`${process.env.EXPO_PUBLIC_SUPABASE_URL}/auth/v1/settings`, {
       headers: { apikey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? "" },
     });
     const settings = (await res.json()) as { external?: Record<string, boolean> };
-    return settings.external?.[provider] !== false;
+    return settings.external?.google !== false;
   } catch {
     return true; // Can't tell (e.g. offline): let the OAuth flow report its own error.
   }
 }
 
-/** Google / Facebook sign-in through Supabase OAuth (requires providers to be enabled). */
-export async function signInWithProvider(provider: "google" | "facebook"): Promise<boolean> {
+/** Google sign-in through Supabase OAuth (requires the provider to be enabled). */
+export async function signInWithGoogle(): Promise<boolean> {
+  const provider = "google";
   // A disabled provider only fails inside the browser (a raw JSON error page),
   // so check first and explain it in the app instead.
-  if (!(await isProviderEnabled(provider))) {
+  if (!(await isGoogleEnabled())) {
     fail(
-      `${provider === "google" ? "Google" : "Facebook"} sign-in isn't available yet. Please use your email and password. ` +
+      "Google sign-in isn't available yet. Please use your email and password. " +
         "(Admins: enable the provider in Supabase → Authentication → Sign In / Providers.)",
     );
   }

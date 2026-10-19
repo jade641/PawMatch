@@ -38,8 +38,8 @@ Part 2 is for the testers (dog owners and veterinarians in Davao City) and can b
   several testers can sign up in the same session.*
 - ***No email server yet?** Turning **Confirm email** off makes sign-up work immediately without any email.*
 
-  - ***Social login (optional).** Google and Facebook buttons are hidden unless
-    `EXPO_PUBLIC_ENABLE_SOCIAL_LOGIN=true`. To use them, enable the providers in Supabase and add
+  - ***Social login (optional).** The Google button is hidden unless
+    `EXPO_PUBLIC_ENABLE_SOCIAL_LOGIN=true`. To use it, enable the Google provider in Supabase and add
     `pawmatch://auth-callback` under **URL Configuration → Redirect URLs**.*
 
 ### *3. Deploy the compatibility Edge Function*
@@ -208,5 +208,5 @@ and the audit trail (who verified what, and when). Please only upload documents 
 
 - Alerts arrive while the app is open, and are kept in **Notifications**. Push notifications while the app is
   closed are not included yet.
-- Google/Facebook sign-in may be turned off.
+- Google sign-in may be turned off.
 - Premium features from the business model (Featured Match, Kennel Partner Plan) are not part of this beta.
