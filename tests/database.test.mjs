@@ -397,6 +397,26 @@ await step("profile: update_my_profile syncs owners", async () => {
   await asFails(A, "update public.owners set rating = 5 where user_id=$1", [A], /permission denied/);
 });
 
+await step("profile: set_my_avatar syncs owners/verifiers and checks the upload", async () => {
+  const pic = `${A}/avatar-1.jpg`;
+  await asFails(A, "select public.set_my_avatar($1)", [pic], /Upload the picture/);
+  await asFails(A, "insert into storage.objects (bucket_id, name) values ('avatars', $1)", [`${B}/avatar-1.jpg`], /row-level security/);
+  await as(A, "insert into storage.objects (bucket_id, name) values ('avatars', $1)", [pic]);
+  await as(A, "select public.set_my_avatar($1)", [pic]);
+  assert.equal((await su("select avatar_url from public.users where id=$1", [A]))[0].avatar_url, pic);
+  assert.equal((await su("select avatar_url from public.owners where user_id=$1", [A]))[0].avatar_url, pic);
+  await asFails(B, "select public.set_my_avatar($1)", [pic], /Upload the picture/);
+
+  await as(V, "insert into storage.objects (bucket_id, name) values ('avatars', $1)", [`${V}/avatar-1.png`]);
+  await as(V, "select public.set_my_avatar($1)", [`${V}/avatar-1.png`]);
+  assert.equal((await su("select avatar from public.verifiers where user_id=$1", [V]))[0].avatar, `${V}/avatar-1.png`);
+
+  // The old picture is deleted by its owner; nobody else can list or delete it.
+  assert.equal((await as(B, "delete from storage.objects where bucket_id='avatars' and name=$1 returning name", [pic])).length, 0);
+  assert.equal((await as(B, "select name from storage.objects where bucket_id='avatars' and name=$1", [pic])).length, 0);
+  assert.equal((await as(A, "delete from storage.objects where bucket_id='avatars' and name=$1 returning name", [pic])).length, 1);
+});
+
 await step("notifications: user can only mark own as read", async () => {
   const rows = await as(A, "update public.notifications set read = true returning id");
   assert.ok(rows.length > 0);

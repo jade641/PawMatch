@@ -340,7 +340,7 @@ export function VetDashboard() {
                 accessibilityLabel="My profile"
                 style={{ borderRadius: 21, borderWidth: 2, borderColor: "rgba(255,255,255,0.7)" }}
               >
-                <Avatar name={name} size={38} color={T.primaryDark} />
+                <Avatar name={name} size={38} color={T.primaryDark} uri={api.avatarUrl(session.user.avatar_url)} />
               </TouchableOpacity>
             </View>
           }
@@ -622,7 +622,7 @@ export function VetRequestDetail() {
             </View>
             {dog?.owner && (
               <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginTop: 14, padding: 12, borderRadius: 16, backgroundColor: T.bg }}>
-                <Avatar name={dog.owner.display_name} size={38} />
+                <Avatar name={dog.owner.display_name} size={38} uri={api.avatarUrl(dog.owner.avatar_url)} />
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontSize: 11, color: T.medium, fontFamily: FONT_BOLD, letterSpacing: 0.6 }}>OWNER</Text>
                   <Text style={{ fontSize: 14, color: T.dark, fontFamily: FONT_BOLD }}>{dog.owner.display_name}</Text>
@@ -900,7 +900,7 @@ export function VetProfile() {
           {/* Identity card */}
           <Panel style={{ alignItems: "center", paddingTop: 0 }}>
             <View style={{ marginTop: -2, padding: 5, borderRadius: 50, backgroundColor: T.white, transform: [{ translateY: -36 }], marginBottom: -36, ...shadow }}>
-              <Avatar name={v.name} size={84} />
+              <Avatar name={v.name} size={84} uri={api.avatarUrl(v.avatar)} />
             </View>
             <Text style={{ fontSize: 20, color: T.dark, fontFamily: FONT_BOLD, marginTop: 12, textAlign: "center" }}>{v.name}</Text>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4 }}>
@@ -1037,7 +1037,7 @@ export function VetSettings() {
         <HeroHeader title="Settings" subtitle="Manage your veterinarian account" onBack={goBack} overlap={36} />
         <View style={{ marginTop: -36, paddingHorizontal: 16, gap: 22 }}>
           <Panel style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
-            <Avatar name={name} size={52} />
+            <Avatar name={name} size={52} uri={api.avatarUrl(session.user.avatar_url)} />
             <View style={{ flex: 1 }}>
               <Text style={{ fontSize: 16, color: T.dark, fontFamily: FONT_BOLD }} numberOfLines={1}>
                 {name}

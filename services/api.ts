@@ -25,7 +25,7 @@ import type {
 } from "../types";
 import { computeCompatibility, explainCompatibility, rankCandidates, type MatchPreferences } from "./compatibility";
 
-const OWNER_FIELDS = "user_id, display_name, location, rating, review_count, completed_matches, verified_at";
+const OWNER_FIELDS = "user_id, display_name, location, avatar_url, rating, review_count, completed_matches, verified_at";
 const DOG_SELECT = `*, owner:owners(${OWNER_FIELDS})`;
 const REQUEST_SELECT =
   `*, dog:dogs!match_requests_dog_id_fkey(${DOG_SELECT}), ` +
@@ -439,7 +439,7 @@ async function readLocalFile(uri: string): Promise<Blob | Uint8Array> {
   return new ExpoFile(uri).bytes();
 }
 
-async function uploadFile(bucket: "dog-photos" | "documents", ownerId: string, prefix: string, uri: string, mimeType: string) {
+async function uploadFile(bucket: "dog-photos" | "documents" | "avatars", ownerId: string, prefix: string, uri: string, mimeType: string) {
   const contentType = mimeType === "image/jpg" ? "image/jpeg" : mimeType;
   const ext = EXTENSIONS[contentType];
   if (!ext) fail("Unsupported file type. Please use JPG, PNG or PDF.");
@@ -461,6 +461,35 @@ export async function uploadDogPhoto(ownerId: string, uri: string, mimeType: str
 
 export async function uploadDocument(ownerId: string, type: DocType, uri: string, mimeType: string): Promise<string> {
   return uploadFile("documents", ownerId, type, uri, mimeType);
+}
+
+/** Public URL for a profile picture stored as an "avatars" bucket path. */
+export function avatarUrl(path: string | null | undefined): string | null {
+  if (!path) return null;
+  if (/^https?:\/\//.test(path)) return path;
+  return supabase.storage.from("avatars").getPublicUrl(path).data.publicUrl;
+}
+
+/**
+ * Uploads a new profile picture, makes it the current one on the user's owner and
+ * verifier profiles, then deletes every older picture so only the current one is kept.
+ */
+export async function setProfilePicture(userId: string, uri: string, mimeType: string): Promise<string> {
+  const path = await uploadFile("avatars", userId, "avatar", uri, mimeType);
+  const { error } = await supabase.rpc("set_my_avatar", { p_path: path });
+  if (error) {
+    await supabase.storage.from("avatars").remove([path]);
+    fail(error);
+  }
+  await removeOldProfilePictures(userId, path);
+  return path;
+}
+
+async function removeOldProfilePictures(userId: string, keepPath: string) {
+  const { data, error } = await supabase.storage.from("avatars").list(userId, { limit: 100 });
+  if (error) return; // The new picture is saved; leftovers are removed on the next change.
+  const stale = (data ?? []).map((f) => `${userId}/${f.name}`).filter((p) => p !== keepPath);
+  if (stale.length) await supabase.storage.from("avatars").remove(stale);
 }
 
 export async function getDocumentUrl(path: string): Promise<string> {

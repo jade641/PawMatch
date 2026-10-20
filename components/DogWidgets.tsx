@@ -2,6 +2,7 @@ import { Check, ChevronDown, Eye, FileText, MapPin, Send, Star, Stethoscope, Syr
 import { useRef, useState } from "react";
 import { ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { capitalize, DOC_TYPES, FONT, FONT_BOLD, FONT_MEDIUM, formatAge, shadow, T } from "../constants/theme";
+import { avatarUrl } from "../services/api";
 import { BREEDS, canonicalBreed, TEMPERAMENT_OPTIONS } from "../services/compatibility";
 import type { Dog, RankedMatch } from "../types";
 import { Avatar, Chip, DogImage, ScoreBar, Tag, VeriBadge } from "./ui";
@@ -370,7 +371,7 @@ export function OwnerLine({ dog }: { dog: Dog }) {
   if (!dog.owner) return null;
   return (
     <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-      <Avatar name={dog.owner.display_name} size={24} />
+      <Avatar name={dog.owner.display_name} size={24} uri={avatarUrl(dog.owner.avatar_url)} />
       <Text style={{ fontSize: 12, color: T.medium, fontFamily: FONT, flexShrink: 1 }} numberOfLines={1}>
         {dog.owner.display_name} •{" "}
       </Text>

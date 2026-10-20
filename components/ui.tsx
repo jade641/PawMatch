@@ -510,7 +510,27 @@ export function Stars({ rating, size = 14 }: { rating: number; size?: number }) 
   );
 }
 
-export function Avatar({ name, size = 40, color = T.primary }: { name: string; size?: number; color?: string }) {
+export function Avatar({
+  name,
+  size = 40,
+  color = T.primary,
+  uri,
+}: {
+  name: string;
+  size?: number;
+  color?: string;
+  /** Profile picture; falls back to initials when absent. */
+  uri?: string | null;
+}) {
+  if (uri) {
+    return (
+      <Image
+        source={{ uri }}
+        style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: T.primaryLight }}
+        accessibilityLabel={`${name}'s profile picture`}
+      />
+    );
+  }
   return (
     <View
       style={{

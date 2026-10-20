@@ -816,7 +816,7 @@ export function OwnerProfile() {
       <ScrollView contentContainerStyle={{ paddingBottom: 32 }}>
         <View style={{ alignItems: "center", paddingVertical: 22, paddingHorizontal: 20, backgroundColor: T.white, gap: 4 }}>
           <View>
-            <Avatar name={session.user.full_name} size={80} />
+            <Avatar name={session.user.full_name} size={80} uri={api.avatarUrl(session.user.avatar_url)} />
             {owner?.verified_at && (
               <View style={{ position: "absolute", right: -4, bottom: -4 }}>
                 <Award size={22} color={T.star} fill={T.star} strokeWidth={1.5} />
@@ -989,7 +989,7 @@ export function MatchProfileScreen() {
 
           {d.owner && (
             <Card onPress={() => navigate("reputation", { userId: d.owner_id })} style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-              <Avatar name={d.owner.display_name} size={48} />
+              <Avatar name={d.owner.display_name} size={48} uri={api.avatarUrl(d.owner.avatar_url)} />
               <View style={{ flex: 1, gap: 2 }}>
                 <Text style={{ fontSize: 15, color: T.dark, fontFamily: FONT_BOLD }}>{d.owner.display_name}</Text>
                 <Text style={{ fontSize: 12, color: T.medium, fontFamily: FONT }}>{d.owner.location}</Text>

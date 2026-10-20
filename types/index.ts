@@ -36,7 +36,7 @@ export interface OwnerProfile {
 
 export type OwnerSummary = Pick<
   OwnerProfile,
-  "user_id" | "display_name" | "location" | "rating" | "review_count" | "completed_matches" | "verified_at"
+  "user_id" | "display_name" | "location" | "avatar_url" | "rating" | "review_count" | "completed_matches" | "verified_at"
 >;
 
 export interface VerifierProfile {

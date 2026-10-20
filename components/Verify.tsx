@@ -351,7 +351,7 @@ export function VerifyChoose() {
                   ...shadow,
                 }}
               >
-                <Avatar name={v.name} size={52} />
+                <Avatar name={v.name} size={52} uri={api.avatarUrl(v.avatar)} />
                 <View style={{ flex: 1, gap: 2 }}>
                   <Text style={{ fontSize: 14, color: T.dark, fontFamily: FONT_BOLD }}>{v.name}</Text>
                   <Text style={{ fontSize: 12, color: T.medium, fontFamily: FONT }}>{v.role}</Text>

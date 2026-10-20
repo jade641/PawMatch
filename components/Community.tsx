@@ -5,6 +5,7 @@ import {
   Award,
   Bell,
   Calendar,
+  Camera,
   Check,
   CheckCircle,
   Clock,
@@ -62,6 +63,7 @@ import {
 import { useApp, useSession } from "../contexts/AppContext";
 import { useAsync } from "../hooks/useAsync";
 import * as api from "../services/api";
+import { pickImage, type PickedFile } from "../services/media";
 import { WEIGHTS } from "../services/compatibility";
 import type { AppNotification, Dog, NotificationType, OwnerProfile } from "../types";
 import { Avatar, Btn, Card, Chip, DogImage, EmptyState, ErrorView, Field, Header, ListItem, Loading, showMessage, Stars, Tag, VeriBadge } from "./ui";
@@ -139,7 +141,7 @@ export function ReputationScreen() {
         refreshControl={<RefreshControl refreshing={false} onRefresh={() => { owner.reload(true); reviews.reload(true); history.reload(true); }} tintColor={T.primary} />}
       >
         <View style={{ padding: 20, flexDirection: "row", alignItems: "center", gap: 16, backgroundColor: T.white }}>
-          <Avatar name={o.display_name} size={64} />
+          <Avatar name={o.display_name} size={64} uri={api.avatarUrl(o.avatar_url)} />
           <View style={{ flex: 1, gap: 3 }}>
             <Text style={{ fontSize: 18, color: T.dark, fontFamily: FONT_BOLD }}>{o.display_name}</Text>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
@@ -424,7 +426,14 @@ export function EditProfileScreen() {
   const [name, setName] = useState(session.user.full_name);
   const [phone, setPhone] = useState(session.user.phone ?? "");
   const [district, setDistrict] = useState<string>(districtOf(session.user.location) ?? DEFAULT_LOCATION);
+  const [photo, setPhoto] = useState<PickedFile | null>(null);
   const [saving, setSaving] = useState(false);
+  const currentPhoto = api.avatarUrl(session.user.avatar_url);
+
+  const choosePhoto = async () => {
+    const picked = await pickImage(true);
+    if (picked) setPhoto(picked);
+  };
 
   const save = async () => {
     if (name.trim().length < 2) {
@@ -434,6 +443,7 @@ export function EditProfileScreen() {
     setSaving(true);
     try {
       await api.updateMyProfile(name, phone, districtLocation(district));
+      if (photo) await api.setProfilePicture(session.user.id, photo.uri, photo.mimeType);
       await refreshSession();
       showToast("Profile updated", undefined, "success");
       goBack();
@@ -479,7 +489,12 @@ export function EditProfileScreen() {
 
         {/* Avatar overlapping the hero */}
         <View style={{ alignItems: "center", marginTop: -56, marginBottom: 20 }}>
-          <View
+          <TouchableOpacity
+            onPress={choosePhoto}
+            disabled={saving}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel={currentPhoto || photo ? "Change profile picture" : "Add profile picture"}
             style={{
               padding: 5,
               borderRadius: 60,
@@ -491,8 +506,30 @@ export function EditProfileScreen() {
               elevation: 8,
             }}
           >
-            <Avatar name={name.trim() || session.user.full_name} size={100} />
-          </View>
+            <Avatar name={name.trim() || session.user.full_name} size={100} uri={photo?.uri ?? currentPhoto} />
+            <View
+              style={{
+                position: "absolute",
+                right: 4,
+                bottom: 4,
+                width: 32,
+                height: 32,
+                borderRadius: 16,
+                backgroundColor: T.primary,
+                borderWidth: 3,
+                borderColor: T.white,
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Camera size={15} color="#fff" strokeWidth={2.5} />
+            </View>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={choosePhoto} disabled={saving} hitSlop={8} accessibilityRole="button">
+            <Text style={{ fontSize: 13, color: T.primary, fontFamily: FONT_BOLD, marginTop: 10 }}>
+              {currentPhoto || photo ? "Change photo" : "Add photo"}
+            </Text>
+          </TouchableOpacity>
           <Text style={{ fontSize: 19, color: T.dark, fontFamily: FONT_BOLD, marginTop: 12, textAlign: "center", paddingHorizontal: 24 }} numberOfLines={1}>
             {name.trim() || session.user.full_name}
           </Text>

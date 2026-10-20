@@ -188,7 +188,7 @@ export function HomeScreen() {
                 accessibilityLabel="My profile"
                 style={{ borderRadius: 21, borderWidth: 2, borderColor: "rgba(255,255,255,0.7)" }}
               >
-                <Avatar name={session.user.full_name} size={38} color={T.primaryDark} />
+                <Avatar name={session.user.full_name} size={38} color={T.primaryDark} uri={api.avatarUrl(session.user.avatar_url)} />
               </TouchableOpacity>
             </View>
           </View>
