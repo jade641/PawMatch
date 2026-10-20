@@ -22,22 +22,30 @@ To set up the backend, build the app and run the beta, see **[BETA-TESTING.md](B
 npm install
 cp .env.example .env        # fill in EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY
 npm start                   # scan the QR code with Expo Go (SDK 54)
+
+
+
+TO RUN IN ANDROID (NOT EXPO)
+$env:JAVA_HOME = [Environment]::GetEnvironmentVariable("JAVA_HOME", "User")
+>> $env:ANDROID_HOME = [Environment]::GetEnvironmentVariable("ANDROID_HOME", "User")
+>> $env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [Environment]::GetEnvironmentVariable("Path", "User")
+>> npx expo run:android
 ```
 
 Without a `.env`, the app opens a "Setup required" screen instead of crashing.
 
 ## Project layout
 
-| Path | What it is |
-| --- | --- |
-| `supabase/migrations/` | Database schema: tables from the ERD, row-level security, triggers, storage buckets, realtime |
-| `supabase/functions/_shared/compatibility.ts` | The compatibility algorithm, shared by the app and the Edge Function |
-| `supabase/functions/compatibility/` | Edge Function: server-side recommendations and "new compatible match" alerts |
-| `services/api.ts` | All Supabase access (auth, dogs, matching, requests, chat, verification, reviews, notifications) |
-| `contexts/AppContext.tsx` | Navigation stack, session, the user's dogs, real-time notifications, toasts |
-| `components/` | Screens (`Auth`, `Home`, `Profile`, `Verify`, `Conversation`, `Community`, `Veterinarian`) and UI kit (`ui.tsx`) |
-| `scripts/seed-demo.mjs` | Admin script: demo accounts and dogs, approving verifiers |
-| `tests/` | Algorithm unit tests and database scenario tests |
+| Path                                            | What it is                                                                                                                       |
+| ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `supabase/migrations/`                        | Database schema: tables from the ERD, row-level security, triggers, storage buckets, realtime                                    |
+| `supabase/functions/_shared/compatibility.ts` | The compatibility algorithm, shared by the app and the Edge Function                                                             |
+| `supabase/functions/compatibility/`           | Edge Function: server-side recommendations and "new compatible match" alerts                                                     |
+| `services/api.ts`                             | All Supabase access (auth, dogs, matching, requests, chat, verification, reviews, notifications)                                 |
+| `contexts/AppContext.tsx`                     | Navigation stack, session, the user's dogs, real-time notifications, toasts                                                      |
+| `components/`                                 | Screens (`Auth`, `Home`, `Profile`, `Verify`, `Conversation`, `Community`, `Veterinarian`) and UI kit (`ui.tsx`) |
+| `scripts/seed-demo.mjs`                       | Admin script: demo accounts and dogs, approving verifiers                                                                        |
+| `tests/`                                      | Algorithm unit tests and database scenario tests                                                                                 |
 
 ## How the main rules are enforced
 
@@ -55,14 +63,14 @@ All business rules live in the database, so a modified client cannot bypass them
 
 ## Scripts
 
-| Command | Purpose |
-| --- | --- |
-| `npm start` | Expo dev server |
-| `npm run check` | Type-check, lint, algorithm tests and database tests |
-| `npm test` | Compatibility algorithm unit tests (includes the paper's worked example) |
-| `npm run test:db` | Applies the migration to an embedded Postgres and checks row-level security and workflows |
-| `npm run seed:demo` | Creates demo owners, dogs and an approved vet (needs `.env.seed`) |
-| `npm run verifier:list` / `npm run verifier:approve -- email` | Review and approve vet/breeder sign-ups |
-| `npm run admin:grant -- email` / `npm run admin:revoke -- email` | Give an account the in-app Admin tab for reviewing vet/breeder applications |
-| `npm run functions:deploy` | Deploy the `compatibility` Edge Function (Supabase CLI) |
-| `npm run build:apk` | Build an installable Android APK with EAS |
+| Command                                                              | Purpose                                                                                   |
+| -------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `npm start`                                                        | Expo dev server                                                                           |
+| `npm run check`                                                    | Type-check, lint, algorithm tests and database tests                                      |
+| `npm test`                                                         | Compatibility algorithm unit tests (includes the paper's worked example)                  |
+| `npm run test:db`                                                  | Applies the migration to an embedded Postgres and checks row-level security and workflows |
+| `npm run seed:demo`                                                | Creates demo owners, dogs and an approved vet (needs `.env.seed`)                       |
+| `npm run verifier:list` / `npm run verifier:approve -- email`    | Review and approve vet/breeder sign-ups                                                   |
+| `npm run admin:grant -- email` / `npm run admin:revoke -- email` | Give an account the in-app Admin tab for reviewing vet/breeder applications               |
+| `npm run functions:deploy`                                         | Deploy the `compatibility` Edge Function (Supabase CLI)                                 |
+| `npm run build:apk`                                                | Build an installable Android APK with EAS                                                 |
