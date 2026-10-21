@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { Fragment, type ReactNode } from "react";
 import { AdminVerifierDetail, AdminVerifiers } from "../components/Admin";
 import { BootScreen, ForgotPassword, Landing, Login, Register, ResetPassword, SetupRequired, VerifyEmail } from "../components/Auth";
 import {
@@ -15,6 +15,7 @@ import { Loading } from "../components/ui";
 import { AuditTrailScreen, VerifyChoose, VerifyStatus, VerifyUpload } from "../components/Verify";
 import { VetDashboard, VetProfile, VetRequestDetail, VetRequests, VetRecords, VetSettings } from "../components/Veterinarian";
 import { isVetPortal, useApp } from "../contexts/AppContext";
+import { useThemePreference } from "../contexts/ThemeContext";
 import { Shell } from "../navigation/Shell";
 import type { Screen } from "../types";
 
@@ -89,16 +90,15 @@ function PageRenderer() {
 
   if (!page) return isVetPortal(session, portal) ? <VetDashboard /> : <HomeScreen />;
   // Remount screens when their params change so data reloads.
-  return <PageKey key={`${screen}:${JSON.stringify(params)}`}>{page()}</PageKey>;
-}
-
-function PageKey({ children }: { children: ReactNode }) {
-  return <>{children}</>;
+  return <Fragment key={`${screen}:${JSON.stringify(params)}`}>{page()}</Fragment>;
 }
 
 export default function Index() {
+  const { scheme } = useThemePreference();
+  // Screens read the palette while rendering, so remount them when the theme changes.
+  // Navigation, session and notifications live above this in AppProvider and are kept.
   return (
-    <Shell>
+    <Shell key={scheme}>
       <PageRenderer />
     </Shell>
   );

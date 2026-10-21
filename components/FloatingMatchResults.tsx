@@ -1,6 +1,7 @@
-import { ChevronRight, Eye, Send, Sparkles } from "lucide-react-native";
-import { Text, TouchableOpacity, View } from "react-native";
-import { capitalize, FONT, FONT_BOLD, formatAge, shadow, T } from "../constants/theme";
+import { Check, Eye, Send, Sparkles } from "lucide-react-native";
+import { Text, View } from "react-native";
+import { capitalize, FONT, FONT_BOLD, formatAge, ON_PHOTO_TEXT, shadow, T } from "../constants/theme";
+import { WEIGHTS } from "../services/compatibility";
 import type { RankedMatch } from "../types";
 import { MATCH_PHOTO_HEIGHT, OwnerLine, TemperamentTags, TrustIndicators } from "./DogWidgets";
 import { Btn, DogImage, ScoreBar, Tag, VeriBadge } from "./ui";
@@ -19,15 +20,17 @@ function CriterionBar({ label, weight, score }: { label: string; weight: string;
   );
 }
 
+const pct = (weight: number) => `${Math.round(weight * 100)}%`;
+
 /** Per-criterion breakdown of the weighted sum (paper Tables 8–11). */
 export function CompatibilityBreakdownCard({ match }: { match: RankedMatch }) {
   const c = match.compatibility;
   return (
     <View style={{ gap: 10 }}>
-      <CriterionBar label={`Breed · ${c.breed.level}`} weight="35%" score={c.breed.score} />
-      <CriterionBar label={`Age · ${c.age.difference} yr gap`} weight="25%" score={c.age.score} />
-      <CriterionBar label={`Sex · ${c.sex.opposite ? "opposite" : "same"}`} weight="15%" score={c.sex.score} />
-      <CriterionBar label={`Temperament · ${c.temperament.level}`} weight="25%" score={c.temperament.score} />
+      <CriterionBar label={`Breed · ${c.breed.level}`} weight={pct(WEIGHTS.breed)} score={c.breed.score} />
+      <CriterionBar label={`Age · ${c.age.difference} yr gap`} weight={pct(WEIGHTS.age)} score={c.age.score} />
+      <CriterionBar label={`Sex · ${c.sex.opposite ? "opposite" : "same"}`} weight={pct(WEIGHTS.sex)} score={c.sex.score} />
+      <CriterionBar label={`Temperament · ${c.temperament.level}`} weight={pct(WEIGHTS.temperament)} score={c.temperament.score} />
     </View>
   );
 }
@@ -38,14 +41,12 @@ function FloatingMatchCard({
   selected,
   onSelect,
   onView,
-  onRequest,
 }: {
   match: RankedMatch;
   rank: number;
   selected: boolean;
   onSelect: () => void;
   onView: () => void;
-  onRequest: () => void;
 }) {
   const { dog, compatibility, reasons } = match;
   return (
@@ -77,7 +78,7 @@ function FloatingMatchCard({
           }}
         >
           <Sparkles size={14} color={T.primary} strokeWidth={2} />
-          <Text style={{ fontSize: 12, color: T.dark, fontFamily: FONT_BOLD }}>
+          <Text style={{ fontSize: 12, color: ON_PHOTO_TEXT, fontFamily: FONT_BOLD }}>
             #{rank} • {compatibility.total}% match
           </Text>
         </View>
@@ -109,45 +110,26 @@ function FloatingMatchCard({
           </View>
         )}
 
+        {/* Choosing a dog reveals its breakdown; the request is sent from the summary below the list. */}
         <View style={{ flexDirection: "row", gap: 10 }}>
-          <TouchableOpacity
+          <Btn
+            title={selected ? "Selected" : "Choose"}
+            icon={selected ? Check : undefined}
+            variant={selected ? "secondary" : "primary"}
+            size="small"
             onPress={onSelect}
-            style={{
-              flex: 1,
-              paddingVertical: 12,
-              borderRadius: 14,
-              backgroundColor: selected ? T.primaryDark : T.primary,
-              alignItems: "center",
-              justifyContent: "center",
-              flexDirection: "row",
-              gap: 6,
-            }}
-          >
-            <Text style={{ fontSize: 14, color: "#fff", fontFamily: FONT_BOLD }}>{selected ? "Selected" : "Choose"}</Text>
-            <ChevronRight size={16} color="#fff" strokeWidth={2} />
-          </TouchableOpacity>
-          <TouchableOpacity
+            accessibilityLabel={selected ? `${dog.name} selected` : `Choose ${dog.name}`}
+            style={{ flex: 1 }}
+          />
+          <Btn
+            title="View"
+            icon={Eye}
+            variant="outline"
+            size="small"
             onPress={onView}
-            style={{
-              paddingHorizontal: 16,
-              paddingVertical: 12,
-              borderRadius: 14,
-              borderWidth: 1.5,
-              borderColor: T.primary,
-              alignItems: "center",
-              justifyContent: "center",
-              flexDirection: "row",
-              gap: 6,
-            }}
-          >
-            <Eye size={14} color={T.primary} strokeWidth={2} />
-            <Text style={{ fontSize: 14, color: T.primary, fontFamily: FONT_BOLD }}>View</Text>
-          </TouchableOpacity>
+            accessibilityLabel={`View ${dog.name}'s profile`}
+          />
         </View>
-        <TouchableOpacity onPress={onRequest} style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-          <Send size={12} color={T.medium} strokeWidth={2} />
-          <Text style={{ fontSize: 12, color: T.medium, fontFamily: FONT }}>Send request to this match</Text>
-        </TouchableOpacity>
       </View>
     </View>
   );
@@ -180,8 +162,8 @@ export function FloatingMatchResults({
           </Text>
         </View>
         <Text style={{ fontSize: 13, color: T.medium, marginTop: 6, lineHeight: 18, fontFamily: FONT }}>
-          Ranked by the compatibility score: breed 35%, age 25%, sex 15%, temperament 25%. Tap Choose to see the
-          breakdown.
+          Ranked by the compatibility score: breed {pct(WEIGHTS.breed)}, age {pct(WEIGHTS.age)}, sex {pct(WEIGHTS.sex)},
+          temperament {pct(WEIGHTS.temperament)}. Choose a dog to see its breakdown, then send your request below.
         </Text>
       </View>
 
@@ -193,7 +175,6 @@ export function FloatingMatchResults({
           selected={m.dog.id === selectedDogId}
           onSelect={() => onSelectDog(m.dog.id)}
           onView={() => onViewDog(m)}
-          onRequest={() => onRequestDog(m)}
         />
       ))}
 
@@ -208,7 +189,7 @@ export function FloatingMatchResults({
               {selected.compatibility.total}% match
             </Text>
           </View>
-          <Btn title="Continue with selected dog" onPress={() => onRequestDog(selected)} />
+          <Btn title={`Send request to ${selected.dog.name}`} icon={Send} onPress={() => onRequestDog(selected)} />
         </View>
       )}
     </View>

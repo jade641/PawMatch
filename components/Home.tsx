@@ -15,21 +15,35 @@ import {
   SlidersHorizontal,
   Sparkles,
 } from "lucide-react-native";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { RefreshControl, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
-import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { LinearGradient } from "expo-linear-gradient";
-import { districtOf, FONT, FONT_BOLD, shadow, T, timeAgo } from "../constants/theme";
+import { BRAND, capitalize, districtOf, FONT, FONT_BOLD, oppositeSex, shadow, T } from "../constants/theme";
 import { useApp, useSession } from "../contexts/AppContext";
 import { useAsync } from "../hooks/useAsync";
 import * as api from "../services/api";
 import type { MatchPreferences } from "../services/compatibility";
 import { TEMPERAMENT_OPTIONS } from "../services/compatibility";
 import type { RankedMatch, Size } from "../types";
+import { NotificationBody } from "./Community";
 import { BreedInput, ColorCombobox, MatchCard, MyDogSelector } from "./DogWidgets";
 import { FloatingMatchResults } from "./FloatingMatchResults";
-import { Avatar, BrandLogo, Btn, Card, Chip, EmptyState, ErrorView, Header, Loading, SectionTitle } from "./ui";
+import {
+  Avatar,
+  BrandLogo,
+  Btn,
+  Card,
+  Chip,
+  EmptyState,
+  ErrorView,
+  Header,
+  HeaderAction,
+  HeroHeader,
+  HeroIconButton,
+  Loading,
+  SectionTitle,
+  TextLink,
+} from "./ui";
 
 function NoDogPrompt() {
   const { navigate } = useApp();
@@ -67,54 +81,25 @@ function NoDogPrompt() {
         </View>
       ))}
 
-      <TouchableOpacity
-        onPress={() => navigate("add-dog")}
-        activeOpacity={0.85}
-        accessibilityRole="button"
-        style={{
-          marginTop: 20,
-          height: 52,
-          borderRadius: 16,
-          backgroundColor: T.primary,
-          flexDirection: "row",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: 8,
-          shadowColor: T.primary,
-          shadowOffset: { width: 0, height: 8 },
-          shadowOpacity: 0.28,
-          shadowRadius: 14,
-          elevation: 5,
-        }}
-      >
-        <Plus size={20} color="#fff" strokeWidth={2.5} />
-        <Text style={{ fontSize: 16, color: "#fff", fontFamily: FONT_BOLD }}>Add Dog Profile</Text>
-      </TouchableOpacity>
+      <Btn title="Add Dog Profile" icon={Plus} size="hero" onPress={() => navigate("add-dog")} style={{ marginTop: 20 }} />
     </View>
-  );
-}
-
-function HeaderIcon({ onPress, label, badge, children }: { onPress: () => void; label: string; badge?: boolean; children: React.ReactNode }) {
-  return (
-    <TouchableOpacity
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      hitSlop={6}
-      style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.2)", alignItems: "center", justifyContent: "center" }}
-    >
-      {children}
-      {badge && <Dot />}
-    </TouchableOpacity>
   );
 }
 
 /* ── Home Dashboard (Figure 10) ─────────────────────────────────── */
 export function HomeScreen() {
-  const { navigate, myDogs, activeDog, setActiveDogId, notifications, unreadCount, openNotification, lastNotification } =
-    useApp();
+  const {
+    navigate,
+    myDogs,
+    activeDog,
+    setActiveDogId,
+    notifications,
+    unreadCount,
+    openNotification,
+    lastNotification,
+    reloadNotifications,
+  } = useApp();
   const session = useSession();
-  const insets = useSafeAreaInsets();
   const firstName = session.user.full_name.split(" ")[0] || session.user.full_name;
   const district = districtOf(session.user.location);
 
@@ -135,64 +120,56 @@ export function HomeScreen() {
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
 
-  const refresh = () => {
-    requests.reload(true);
-    verifiedNearby.reload(true);
-    top.reload(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const refresh = async () => {
+    setRefreshing(true);
+    await Promise.all([requests.reload(true), verifiedNearby.reload(true), top.reload(true), reloadNotifications()]);
+    setRefreshing(false);
   };
 
   const stats = [
     { Icon: Heart, n: incomingPending, t: "Match\nRequests", color: T.primary, tint: T.primaryLight, go: () => navigate("requests") },
-    { Icon: CheckCircle, n: verifiedNearby.data ?? 0, t: district ? `Verified in\n${district}` : "Verified\nDogs", color: T.success, tint: T.successLight, go: () => navigate("match") },
+    {
+      Icon: CheckCircle,
+      // Show a dash rather than a misleading 0 when the count couldn't be loaded.
+      n: verifiedNearby.error ? "–" : (verifiedNearby.data ?? 0),
+      t: district ? `Verified in\n${district}` : "Verified\nDogs",
+      color: T.success,
+      tint: T.successLight,
+      go: () => navigate("match"),
+    },
     { Icon: Bell, n: unreadCount, t: "Unread\nAlerts", color: T.accent, tint: T.accentLight, go: () => navigate("notifications") },
-  ];
-
-  const actions = [
-    { Icon: Sparkles, label: "Find Match", color: T.primary, tint: T.primaryLight, go: () => navigate(myDogs.length ? "filter" : "add-dog") },
-    { Icon: Search, label: "Browse", color: T.accent, tint: T.accentLight, go: () => navigate("match") },
-    { Icon: Plus, label: "Add Dog", color: T.success, tint: T.successLight, go: () => navigate("add-dog") },
-    { Icon: MessageCircle, label: "Messages", color: T.secondaryDark, tint: T.secondaryLight, go: () => navigate("requests") },
   ];
 
   return (
     <View style={{ flex: 1, backgroundColor: T.bg }}>
-      <StatusBar style="light" />
       <ScrollView
         contentContainerStyle={{ paddingBottom: 32 }}
-        refreshControl={<RefreshControl refreshing={false} onRefresh={refresh} tintColor={T.primary} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={T.primary} />}
       >
-        {/* Hero */}
-        <View style={{ paddingTop: Math.max(insets.top, 16) + 8, paddingBottom: 64, paddingHorizontal: 20, overflow: "hidden", borderBottomLeftRadius: 28, borderBottomRightRadius: 28 }}>
-          <LinearGradient colors={[T.primary, T.primaryDark]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }} />
-          <View style={{ position: "absolute", width: 200, height: 200, borderRadius: 100, backgroundColor: "rgba(255,255,255,0.08)", top: -60, right: -50 }} />
-          <View style={{ position: "absolute", width: 120, height: 120, borderRadius: 60, backgroundColor: "rgba(255,255,255,0.06)", bottom: -30, left: -30 }} />
-          <PawPrint size={22} color="#fff" style={{ position: "absolute", bottom: 74, right: 40, opacity: 0.2, transform: [{ rotate: "20deg" }] }} />
-
-          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-              <View style={{ width: 34, height: 34, borderRadius: 11, backgroundColor: "rgba(255,255,255,0.22)", alignItems: "center", justifyContent: "center" }}>
-                <BrandLogo size={22} />
-              </View>
-              <Text style={{ fontSize: 19, color: "#fff", fontFamily: FONT_BOLD, letterSpacing: -0.3 }}>PawMatch</Text>
+        <HeroHeader
+          title="PawMatch"
+          overlap={42}
+          leading={
+            <View style={{ width: 34, height: 34, borderRadius: 11, backgroundColor: "rgba(255,255,255,0.22)", alignItems: "center", justifyContent: "center" }}>
+              <BrandLogo size={22} />
             </View>
+          }
+          right={
             <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-              <HeaderIcon onPress={() => navigate("requests")} label="Requests and messages" badge={incomingPending > 0}>
-                <MessageCircle size={20} color="#fff" strokeWidth={2} />
-              </HeaderIcon>
-              <HeaderIcon onPress={() => navigate("notifications")} label="Notifications" badge={unreadCount > 0}>
-                <Bell size={20} color="#fff" strokeWidth={2} />
-              </HeaderIcon>
+              <HeroIconButton icon={MessageCircle} label="Requests and messages" onPress={() => navigate("requests")} badge={incomingPending > 0} />
+              <HeroIconButton icon={Bell} label="Notifications" onPress={() => navigate("notifications")} badge={unreadCount > 0} />
               <TouchableOpacity
                 onPress={() => navigate("owner-profile")}
                 accessibilityRole="button"
                 accessibilityLabel="My profile"
                 style={{ borderRadius: 21, borderWidth: 2, borderColor: "rgba(255,255,255,0.7)" }}
               >
-                <Avatar name={session.user.full_name} size={38} color={T.primaryDark} uri={api.avatarUrl(session.user.avatar_url)} />
+                <Avatar name={session.user.full_name} size={38} color={BRAND.orangeDeep} uri={api.avatarUrl(session.user.avatar_url)} />
               </TouchableOpacity>
             </View>
-          </View>
-
+          }
+        >
           <Text style={{ fontSize: 14, color: "rgba(255,255,255,0.85)", fontFamily: FONT, marginTop: 24 }}>{greeting} 👋</Text>
           <Text style={{ fontSize: 28, color: "#fff", fontFamily: FONT_BOLD, letterSpacing: -0.5, marginTop: 2 }}>{firstName}</Text>
           <View
@@ -211,7 +188,7 @@ export function HomeScreen() {
             <MapPin size={14} color="#fff" strokeWidth={2.25} />
             <Text style={{ fontSize: 13, color: "#fff", fontFamily: FONT_BOLD }}>{session.user.location || "Davao City"}</Text>
           </View>
-        </View>
+        </HeroHeader>
 
         {/* Stats card overlapping the hero */}
         <View
@@ -235,6 +212,8 @@ export function HomeScreen() {
               key={s.t}
               onPress={s.go}
               activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={`${s.n} ${s.t.replace("\n", " ")}`}
               style={{ flex: 1, alignItems: "center", borderLeftWidth: i === 0 ? 0 : 1, borderLeftColor: T.border, paddingHorizontal: 6 }}
             >
               <View style={{ width: 38, height: 38, borderRadius: 13, backgroundColor: s.tint, alignItems: "center", justifyContent: "center" }}>
@@ -246,23 +225,6 @@ export function HomeScreen() {
           ))}
         </View>
 
-        {/* Quick actions */}
-        <View style={{ paddingHorizontal: 20, marginBottom: 24 }}>
-          <Text style={{ fontSize: 16, color: T.dark, fontFamily: FONT_BOLD, marginBottom: 12 }}>Quick Actions</Text>
-          <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-            {actions.map((a) => (
-              <TouchableOpacity key={a.label} onPress={a.go} activeOpacity={0.75} style={{ alignItems: "center", width: "23%" }}>
-                <View style={{ width: 58, height: 58, borderRadius: 20, backgroundColor: T.white, alignItems: "center", justifyContent: "center", ...shadow }}>
-                  <View style={{ width: 40, height: 40, borderRadius: 14, backgroundColor: a.tint, alignItems: "center", justifyContent: "center" }}>
-                    <a.Icon size={20} color={a.color} strokeWidth={2} />
-                  </View>
-                </View>
-                <Text style={{ fontSize: 12, color: T.dark, fontFamily: FONT_BOLD, marginTop: 8 }}>{a.label}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-
         {myDogs.length === 0 ? (
           <NoDogPrompt />
         ) : (
@@ -271,7 +233,7 @@ export function HomeScreen() {
               <TouchableOpacity
                 activeOpacity={0.9}
                 onPress={() => navigate("filter")}
-                style={{ borderRadius: 24, padding: 20, overflow: "hidden", gap: 8, backgroundColor: T.dark }}
+                style={{ borderRadius: 24, padding: 20, overflow: "hidden", gap: 8, backgroundColor: T.ink }}
               >
                 <View style={{ position: "absolute", right: -30, top: -30, width: 140, height: 140, borderRadius: 70, backgroundColor: T.primary, opacity: 0.9 }} />
                 <View style={{ position: "absolute", right: 30, bottom: -50, width: 100, height: 100, borderRadius: 50, backgroundColor: "rgba(255,255,255,0.06)" }} />
@@ -307,11 +269,7 @@ export function HomeScreen() {
               <View style={{ paddingHorizontal: 20 }}>
                 <SectionTitle
                   title="Your Top Matches Today"
-                  right={
-                    <TouchableOpacity onPress={() => navigate("match")}>
-                      <Text style={{ fontSize: 12, color: T.primary, fontFamily: FONT_BOLD }}>Browse all →</Text>
-                    </TouchableOpacity>
-                  }
+                  right={<TextLink label="Browse all" onPress={() => navigate("match")} />}
                 />
                 {myDogs.length > 1 && (
                   <View style={{ marginBottom: 12 }}>
@@ -328,7 +286,7 @@ export function HomeScreen() {
                   <EmptyState
                     icon={Search}
                     title="No compatible dogs yet"
-                    message={`No ${activeDog?.sex === "male" ? "female" : "male"} dogs are listed yet. Check back soon — you'll be alerted when a compatible match joins.`}
+                    message={`No ${activeDog ? oppositeSex(activeDog.sex) : "compatible"} dogs are listed yet. Check back soon — you'll be alerted when a compatible match joins.`}
                   />
                 </Card>
               ) : (
@@ -353,11 +311,7 @@ export function HomeScreen() {
           <SectionTitle
             title="Recent Activity"
             right={
-              notifications.length > 0 ? (
-                <TouchableOpacity onPress={() => navigate("notifications")}>
-                  <Text style={{ fontSize: 12, color: T.primary, fontFamily: FONT_BOLD }}>See all →</Text>
-                </TouchableOpacity>
-              ) : undefined
+              notifications.length > 0 ? <TextLink label="See all" onPress={() => navigate("notifications")} /> : undefined
             }
           />
           {notifications.length === 0 ? (
@@ -377,6 +331,7 @@ export function HomeScreen() {
                   key={n.id}
                   onPress={() => openNotification(n)}
                   activeOpacity={0.7}
+                  accessibilityRole="button"
                   style={{
                     flexDirection: "row",
                     gap: 12,
@@ -387,17 +342,7 @@ export function HomeScreen() {
                     borderBottomColor: T.bg,
                   }}
                 >
-                  <View style={{ width: 38, height: 38, borderRadius: 13, backgroundColor: T.primaryLight, alignItems: "center", justifyContent: "center" }}>
-                    <Bell size={17} color={T.primary} strokeWidth={2} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 14, color: T.dark, fontFamily: n.read ? FONT : FONT_BOLD }}>{n.title}</Text>
-                    <Text style={{ fontSize: 12, marginTop: 2, color: T.medium, fontFamily: FONT }} numberOfLines={2}>
-                      {n.body}
-                    </Text>
-                    <Text style={{ fontSize: 11, marginTop: 4, color: T.light, fontFamily: FONT }}>{timeAgo(n.created_at)}</Text>
-                  </View>
-                  {!n.read && <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: T.primary, marginTop: 6 }} />}
+                  <NotificationBody n={n} compact />
                 </TouchableOpacity>
               ))}
             </View>
@@ -405,24 +350,6 @@ export function HomeScreen() {
         </View>
       </ScrollView>
     </View>
-  );
-}
-
-function Dot() {
-  return (
-    <View
-      style={{
-        position: "absolute",
-        top: -3,
-        right: -4,
-        width: 10,
-        height: 10,
-        borderRadius: 5,
-        backgroundColor: T.error,
-        borderWidth: 1.5,
-        borderColor: T.white,
-      }}
-    />
   );
 }
 
@@ -450,13 +377,20 @@ export function MatchScreen() {
       api.browseDogs({
         excludeOwnerId: session.user.id,
         search: debounced,
-        sex: activeDog ? (activeDog.sex === "male" ? "female" : "male") : undefined,
+        sex: activeDog ? oppositeSex(activeDog.sex) : undefined,
         size: size ?? undefined,
         verifiedOnly,
         location: nearMe ? (district ?? "Davao") : undefined,
       }),
     [debounced, verifiedOnly, nearMe, size, activeDog?.id, district],
   );
+
+  const [refreshing, setRefreshing] = useState(false);
+  const refresh = async () => {
+    setRefreshing(true);
+    await dogs.reload(true);
+    setRefreshing(false);
+  };
 
   const ranked: RankedMatch[] = useMemo(() => {
     const scored = api.scoreDogs(activeDog, dogs.data ?? []);
@@ -487,6 +421,7 @@ export function MatchScreen() {
               onChangeText={setSearch}
               placeholder="Search dogs, breeds, colors..."
               placeholderTextColor={T.light}
+              accessibilityLabel="Search dogs by name, breed or color"
               style={{ flex: 1, fontSize: 14, color: T.dark, fontFamily: FONT }}
               returnKeyType="search"
             />
@@ -503,21 +438,20 @@ export function MatchScreen() {
           <Chip label="Verified" icon={ShieldCheck} active={verifiedOnly} onPress={() => setVerifiedOnly((v) => !v)} />
           <Chip label={district ? `Near Me (${district})` : "Near Me"} icon={MapPin} active={nearMe} onPress={() => setNearMe((v) => !v)} />
           {SIZES.map((s) => (
-            <Chip key={s} label={s[0].toUpperCase() + s.slice(1)} icon={Ruler} active={size === s} onPress={() => setSize(size === s ? null : s)} />
+            <Chip key={s} label={capitalize(s)} icon={Ruler} active={size === s} onPress={() => setSize(size === s ? null : s)} />
           ))}
-          <Chip label="Requests" icon={MessageCircle} onPress={() => navigate("requests")} />
         </ScrollView>
         {myDogs.length > 1 && <MyDogSelector dogs={myDogs} activeId={activeDog?.id} onSelect={setActiveDogId} />}
       </View>
 
       <ScrollView
         contentContainerStyle={{ padding: 20, gap: 16, paddingBottom: 32 }}
-        refreshControl={<RefreshControl refreshing={false} onRefresh={() => dogs.reload(true)} tintColor={T.primary} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={T.primary} />}
         keyboardShouldPersistTaps="handled"
       >
         {activeDog ? (
           <Text style={{ fontSize: 12, color: T.medium, fontFamily: FONT }}>
-            Showing {activeDog.sex === "male" ? "female" : "male"} dogs ranked by compatibility with {activeDog.name}.
+            Showing {oppositeSex(activeDog.sex)} dogs ranked by compatibility with {activeDog.name}.
           </Text>
         ) : (
           <NoDogPrompt />
@@ -559,6 +493,7 @@ export function FilterScreen() {
   const [selectedDogId, setSelectedDogId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>();
+  const runId = useRef(0);
 
   const update = <K extends keyof Prefs>(key: K, value: Prefs[K]) => {
     setPrefs((p) => ({ ...p, [key]: value }));
@@ -566,6 +501,8 @@ export function FilterScreen() {
 
   const run = async () => {
     if (!activeDog) return;
+    // Switching dogs mid-request must not show results computed for the previous dog.
+    const id = ++runId.current;
     setLoading(true);
     setError(undefined);
     try {
@@ -577,16 +514,19 @@ export function FilterScreen() {
         verifiedOnly: prefs.verifiedOnly,
       };
       const { results: r } = await api.recommendMatches(activeDog, preferences, 3);
+      if (id !== runId.current) return;
       setResults(r);
       setSelectedDogId(r[0]?.dog.id ?? null);
     } catch (e) {
-      setError(api.errorMessage(e));
+      if (id === runId.current) setError(api.errorMessage(e));
     } finally {
-      setLoading(false);
+      if (id === runId.current) setLoading(false);
     }
   };
 
   const reset = () => {
+    runId.current++;
+    setLoading(false);
     setPrefs(EMPTY_PREFS);
     setResults(null);
     setSelectedDogId(null);
@@ -606,15 +546,7 @@ export function FilterScreen() {
         title="Breeding Matcher"
         subtitle="Enter your ideal traits, then choose from the top 3 dogs."
         onBack={goBack}
-        right={
-          <TouchableOpacity
-            onPress={reset}
-            style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, backgroundColor: T.primaryLight }}
-          >
-            <RefreshCw size={14} color={T.primaryDark} strokeWidth={2} />
-            <Text style={{ fontSize: 12, color: T.primaryDark, fontFamily: FONT_BOLD }}>Reset</Text>
-          </TouchableOpacity>
-        }
+        right={<HeaderAction icon={RefreshCw} label="Reset" onPress={reset} />}
       />
 
       {myDogs.length === 0 ? (
@@ -622,10 +554,20 @@ export function FilterScreen() {
       ) : (
         <ScrollView contentContainerStyle={{ padding: 20, gap: 16, paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
           <Card style={{ gap: 4 }}>
-            <MyDogSelector dogs={myDogs} activeId={activeDog?.id} onSelect={(id) => { setActiveDogId(id); setResults(null); }} label="Find a partner for" />
+            <MyDogSelector
+              dogs={myDogs}
+              activeId={activeDog?.id}
+              onSelect={(id) => {
+                runId.current++;
+                setLoading(false);
+                setActiveDogId(id);
+                setResults(null);
+              }}
+              label="Find a partner for"
+            />
             {activeDog && (
               <Text style={{ fontSize: 12, color: T.medium, fontFamily: FONT, marginTop: 8 }}>
-                Only {activeDog.sex === "male" ? "female" : "male"} dogs are considered — sex compatibility is a
+                Only {oppositeSex(activeDog.sex)} dogs are considered — sex compatibility is a
                 biological requirement for breeding.
               </Text>
             )}
@@ -679,7 +621,7 @@ export function FilterScreen() {
           ) : results.length === 0 ? (
             <Card>
               <EmptyState
-                icon={Plus}
+                icon={Search}
                 title="No dogs match these traits"
                 message="Loosen a filter (for example breed or color) and try again."
               />

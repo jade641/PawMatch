@@ -1,7 +1,6 @@
 import Constants from "expo-constants";
 import * as Linking from "expo-linking";
 import {
-  ArrowLeft,
   Award,
   Bell,
   Calendar,
@@ -31,9 +30,7 @@ import {
   XCircle,
 } from "lucide-react-native";
 import { type ComponentType, useState } from "react";
-import { StatusBar } from "expo-status-bar";
 import {
-  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   RefreshControl,
@@ -44,8 +41,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { LinearGradient } from "expo-linear-gradient";
 import {
   DAVAO_DISTRICTS,
   DEFAULT_LOCATION,
@@ -56,7 +51,6 @@ import {
   FONT_MEDIUM,
   formatDate,
   REQUEST_STATUS,
-  shadow,
   T,
   timeAgo,
 } from "../constants/theme";
@@ -66,7 +60,28 @@ import * as api from "../services/api";
 import { pickImage, type PickedFile } from "../services/media";
 import { WEIGHTS } from "../services/compatibility";
 import type { AppNotification, Dog, NotificationType, OwnerProfile } from "../types";
-import { Avatar, Btn, Card, Chip, DogImage, EmptyState, ErrorView, Field, Header, ListItem, Loading, showMessage, Stars, Tag, VeriBadge } from "./ui";
+import { otherSide } from "./Conversation";
+import {
+  Avatar,
+  Btn,
+  Card,
+  Chip,
+  DogImage,
+  EmptyState,
+  ErrorView,
+  Field,
+  Header,
+  HeaderAction,
+  HeroHeader,
+  ListItem,
+  Loading,
+  SectionCard,
+  SegmentedTabs,
+  showMessage,
+  Stars,
+  Tag,
+  VeriBadge,
+} from "./ui";
 
 /* ── Badges ─────────────────────────────────────────────────────── */
 interface BadgeDef {
@@ -107,6 +122,12 @@ export function ReputationScreen() {
   const reviews = useAsync(() => api.listReviewsFor(userId), [userId, lastNotification?.id]);
   const dogs = useAsync(() => api.listMyDogs(userId), [userId]);
   const history = useAsync(() => (isMe ? api.listMyRequests() : Promise.resolve([])), [isMe]);
+  const [refreshing, setRefreshing] = useState(false);
+  const refresh = async () => {
+    setRefreshing(true);
+    await Promise.all([owner.reload(true), reviews.reload(true), dogs.reload(true), history.reload(true)]);
+    setRefreshing(false);
+  };
 
   if (owner.loading) {
     return (
@@ -128,9 +149,9 @@ export function ReputationScreen() {
   const o = owner.data;
   const dogList = dogs.data ?? [];
   const tabs = [
-    { id: "badges" as const, label: "Badges", Icon: Award },
-    { id: "history" as const, label: isMe ? "History" : "Dogs", Icon: FileText },
-    { id: "reviews" as const, label: `Reviews (${o.review_count})`, Icon: MessageSquare },
+    { id: "badges" as const, label: "Badges", icon: Award },
+    { id: "history" as const, label: isMe ? "History" : "Dogs", icon: FileText },
+    { id: "reviews" as const, label: `Reviews (${o.review_count})`, icon: MessageSquare },
   ];
 
   return (
@@ -138,7 +159,7 @@ export function ReputationScreen() {
       <Header title="Reputation & History" icon={Star} onBack={canGoBack ? goBack : undefined} />
       <ScrollView
         contentContainerStyle={{ paddingBottom: 32 }}
-        refreshControl={<RefreshControl refreshing={false} onRefresh={() => { owner.reload(true); reviews.reload(true); history.reload(true); }} tintColor={T.primary} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={T.primary} />}
       >
         <View style={{ padding: 20, flexDirection: "row", alignItems: "center", gap: 16, backgroundColor: T.white }}>
           <Avatar name={o.display_name} size={64} uri={api.avatarUrl(o.avatar_url)} />
@@ -150,24 +171,13 @@ export function ReputationScreen() {
             </View>
             <Text style={{ fontSize: 12, color: T.medium, fontFamily: FONT }}>
               {o.completed_matches} completed match{o.completed_matches === 1 ? "" : "es"}
-              {o.verified_at ? ` • Verified since ${new Date(o.verified_at).getFullYear()}` : " • Not yet verified"}
+              {o.verified_at ? ` • Verified since ${formatDate(o.verified_at, { day: undefined })}` : " • Not yet verified"}
             </Text>
             <Text style={{ fontSize: 12, color: T.medium, fontFamily: FONT }}>{o.location} • Member since {formatDate(o.created_at, { day: undefined })}</Text>
           </View>
         </View>
 
-        <View style={{ flexDirection: "row", margin: 20, marginBottom: 14, borderRadius: 12, overflow: "hidden", borderWidth: 1, borderColor: T.border }}>
-          {tabs.map(({ id, label, Icon }) => (
-            <TouchableOpacity
-              key={id}
-              onPress={() => setTab(id)}
-              style={{ flex: 1, paddingVertical: 10, backgroundColor: tab === id ? T.primary : T.white, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 6 }}
-            >
-              <Icon size={14} color={tab === id ? "#fff" : T.medium} strokeWidth={1.6} />
-              <Text style={{ fontSize: 12, color: tab === id ? "#fff" : T.medium, fontFamily: FONT_BOLD }}>{label}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
+        <SegmentedTabs tabs={tabs} value={tab} onChange={setTab} style={{ marginBottom: 14 }} />
 
         <View style={{ paddingHorizontal: 20, gap: 12 }}>
           {tab === "badges" && (
@@ -201,12 +211,13 @@ export function ReputationScreen() {
             (isMe ? (
               history.loading ? (
                 <Loading />
+              ) : history.error ? (
+                <ErrorView message={history.error} onRetry={() => history.reload()} />
               ) : (history.data ?? []).length === 0 ? (
                 <EmptyState icon={FileText} title="No history yet" message="Your breeding requests and their outcomes will be listed here." />
               ) : (
                 (history.data ?? []).map((r) => {
-                  const iAmRequester = r.requester_user_id === session.user.id;
-                  const other = iAmRequester ? r.dog : r.requester_dog;
+                  const { iAmRequester, otherDog: other } = otherSide(r, session.user.id);
                   const status = REQUEST_STATUS[r.status];
                   const Icon = r.status === "completed" || r.status === "accepted" ? CheckCircle : r.status === "pending" ? Clock : XCircle;
                   return (
@@ -226,6 +237,10 @@ export function ReputationScreen() {
                   );
                 })
               )
+            ) : dogs.loading ? (
+              <Loading />
+            ) : dogs.error ? (
+              <ErrorView message={dogs.error} onRetry={() => dogs.reload()} />
             ) : dogList.length === 0 ? (
               <EmptyState icon={PawPrint} title="No dogs listed" message="This owner hasn't added any dogs yet." />
             ) : (
@@ -268,12 +283,9 @@ export function ReputationScreen() {
             ))}
 
           {isMe && (
-            <>
-              <Btn title="Write a Review" icon={MessageSquare} variant="secondary" onPress={() => navigate("requests")} />
-              <Text style={{ fontSize: 12, color: T.medium, fontFamily: FONT, textAlign: "center" }}>
-                Reviews are written from a conversation once a breeding request has been accepted.
-              </Text>
-            </>
+            <Text style={{ fontSize: 12, color: T.medium, fontFamily: FONT, textAlign: "center" }}>
+              Reviews are written from a conversation once a breeding request has been accepted.
+            </Text>
           )}
         </View>
       </ScrollView>
@@ -295,6 +307,34 @@ const NOTIFICATION_ICONS: Record<NotificationType, ComponentType<any>> = {
   system: Info,
 };
 
+/** Icon, text and unread dot of a notification row; the caller provides the pressable container. */
+export function NotificationBody({ n, compact }: { n: AppNotification; compact?: boolean }) {
+  const Icon = NOTIFICATION_ICONS[n.type] ?? Bell;
+  return (
+    <>
+      <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: T.primaryLight, alignItems: "center", justifyContent: "center" }}>
+        <Icon size={17} color={T.primary} strokeWidth={1.6} />
+      </View>
+      <View style={{ flex: 1, gap: 2 }}>
+        <Text style={{ fontSize: 14, color: T.dark, fontFamily: n.read ? FONT_MEDIUM : FONT_BOLD }}>{n.title}</Text>
+        {n.body ? (
+          <Text style={{ fontSize: 13, color: T.medium, fontFamily: FONT, lineHeight: 18 }} numberOfLines={compact ? 2 : undefined}>
+            {n.body}
+          </Text>
+        ) : null}
+        <Text style={{ fontSize: 11, color: T.medium, fontFamily: FONT, marginTop: 2 }}>{timeAgo(n.created_at)}</Text>
+      </View>
+      {!n.read && (
+        <View
+          style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: T.primary, marginTop: 6 }}
+          accessible
+          accessibilityLabel="Unread"
+        />
+      )}
+    </>
+  );
+}
+
 export function NotificationsScreen() {
   const { goBack, canGoBack, notifications, markAllRead, openNotification, reloadNotifications, unreadCount } = useApp();
   const [refreshing, setRefreshing] = useState(false);
@@ -312,11 +352,7 @@ export function NotificationsScreen() {
         icon={Bell}
         onBack={canGoBack ? goBack : undefined}
         right={
-          unreadCount > 0 ? (
-            <TouchableOpacity onPress={markAllRead}>
-              <Text style={{ fontSize: 12, color: T.primary, fontFamily: FONT_BOLD }}>Mark all read</Text>
-            </TouchableOpacity>
-          ) : undefined
+          unreadCount > 0 ? <HeaderAction icon={Check} label="Mark all read" onPress={markAllRead} /> : undefined
         }
       />
       <ScrollView
@@ -326,22 +362,11 @@ export function NotificationsScreen() {
         {notifications.length === 0 ? (
           <EmptyState icon={Bell} title="No Notifications" message="You're all caught up! Match requests, messages and verification results will appear here." />
         ) : (
-          notifications.map((n: AppNotification) => {
-            const Icon = NOTIFICATION_ICONS[n.type] ?? Bell;
-            return (
-              <Card key={n.id} onPress={() => openNotification(n)} style={{ flexDirection: "row", gap: 12, alignItems: "flex-start", backgroundColor: n.read ? T.white : "#FFF8F5" }}>
-                <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: T.primaryLight, alignItems: "center", justifyContent: "center" }}>
-                  <Icon size={17} color={T.primary} strokeWidth={1.6} />
-                </View>
-                <View style={{ flex: 1, gap: 2 }}>
-                  <Text style={{ fontSize: 14, color: T.dark, fontFamily: n.read ? FONT_MEDIUM : FONT_BOLD }}>{n.title}</Text>
-                  {n.body ? <Text style={{ fontSize: 13, color: T.medium, fontFamily: FONT, lineHeight: 18 }}>{n.body}</Text> : null}
-                  <Text style={{ fontSize: 11, color: T.light, fontFamily: FONT, marginTop: 2 }}>{timeAgo(n.created_at)}</Text>
-                </View>
-                {!n.read && <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: T.primary, marginTop: 6 }} />}
-              </Card>
-            );
-          })
+          notifications.map((n) => (
+            <Card key={n.id} onPress={() => openNotification(n)} style={{ flexDirection: "row", gap: 12, alignItems: "flex-start", backgroundColor: n.read ? T.white : T.highlight }}>
+              <NotificationBody n={n} />
+            </Card>
+          ))
         )}
       </ScrollView>
     </View>
@@ -412,7 +437,7 @@ export function SettingsScreen() {
         </View>
         <View style={{ alignItems: "center", gap: 4 }}>
           <Text style={{ fontSize: 12, color: T.medium, fontFamily: FONT }}>PawMatch Mobile • Version {version} (beta)</Text>
-          <Text style={{ fontSize: 12, color: T.light, fontFamily: FONT }}>University of Mindanao • Davao City</Text>
+          <Text style={{ fontSize: 12, color: T.medium, fontFamily: FONT }}>University of Mindanao • Davao City</Text>
         </View>
       </ScrollView>
     </View>
@@ -443,49 +468,36 @@ export function EditProfileScreen() {
     setSaving(true);
     try {
       await api.updateMyProfile(name, phone, districtLocation(district));
-      if (photo) await api.setProfilePicture(session.user.id, photo.uri, photo.mimeType);
-      await refreshSession();
-      showToast("Profile updated", undefined, "success");
-      goBack();
     } catch (e) {
       showMessage("Couldn't save", api.errorMessage(e));
-    } finally {
       setSaving(false);
+      return;
     }
+    let photoError: string | null = null;
+    if (photo) {
+      try {
+        await api.setProfilePicture(session.user.id, photo.uri, photo.mimeType);
+      } catch (e) {
+        photoError = api.errorMessage(e);
+      }
+    }
+    await refreshSession();
+    setSaving(false);
+    if (photoError) {
+      // Stay on the screen with the picked photo so the owner can retry it.
+      showMessage("Details saved, photo not updated", photoError);
+      return;
+    }
+    showToast("Profile updated", undefined, "success");
+    goBack();
   };
 
-  const insets = useSafeAreaInsets();
-  const role = session.verifier ? "Verifier" : "Dog Owner";
+  const role = session.owner && session.verifier ? "Dog Owner & Verifier" : session.verifier ? "Verifier" : "Dog Owner";
 
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: T.bg }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-      <StatusBar style="light" />
       <ScrollView contentContainerStyle={{ paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
-        {/* Hero header */}
-        <View style={{ paddingTop: Math.max(insets.top, 16) + 8, paddingBottom: 76, paddingHorizontal: 20, overflow: "hidden", borderBottomLeftRadius: 28, borderBottomRightRadius: 28 }}>
-          <LinearGradient colors={[T.primary, T.primaryDark]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }} />
-          <View style={{ position: "absolute", width: 200, height: 200, borderRadius: 100, backgroundColor: "rgba(255,255,255,0.08)", top: -60, right: -50 }} />
-          <PawPrint size={22} color="#fff" style={{ position: "absolute", bottom: 36, left: 36, opacity: 0.18, transform: [{ rotate: "-20deg" }] }} />
-          <PawPrint size={18} color="#fff" style={{ position: "absolute", bottom: 52, right: 48, opacity: 0.18, transform: [{ rotate: "20deg" }] }} />
-
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-            <TouchableOpacity
-              onPress={goBack}
-              accessibilityRole="button"
-              accessibilityLabel="Back"
-              hitSlop={8}
-              style={{ width: 40, height: 40, borderRadius: 14, backgroundColor: "rgba(255,255,255,0.22)", alignItems: "center", justifyContent: "center" }}
-            >
-              <ArrowLeft size={20} color="#fff" strokeWidth={2.5} />
-            </TouchableOpacity>
-            <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 22, color: "#fff", fontFamily: FONT_BOLD, letterSpacing: -0.3 }}>Edit Profile</Text>
-              <Text style={{ fontSize: 13, color: "rgba(255,255,255,0.85)", fontFamily: FONT, marginTop: 2 }}>
-                Keep your details up to date
-              </Text>
-            </View>
-          </View>
-        </View>
+        <HeroHeader title="Edit Profile" subtitle="Keep your details up to date" onBack={goBack} overlap={54} />
 
         {/* Avatar overlapping the hero */}
         <View style={{ alignItems: "center", marginTop: -56, marginBottom: 20 }}>
@@ -540,7 +552,7 @@ export function EditProfileScreen() {
         </View>
 
         <View style={{ paddingHorizontal: 16, gap: 16 }}>
-          <ProfileSection icon={User} title="Personal Info">
+          <SectionCard icon={User} title="Personal Info">
             <IconField icon={User} label="Full Name" value={name} onChangeText={setName} autoComplete="name" placeholder="Enter your full name" />
             <IconField
               icon={Mail}
@@ -551,74 +563,20 @@ export function EditProfileScreen() {
               hint="Contact support to change your email address."
             />
             <IconField icon={Phone} label="Phone Number" value={phone} onChangeText={setPhone} keyboardType="phone-pad" autoComplete="tel" placeholder="0917 123 4567" last />
-          </ProfileSection>
+          </SectionCard>
 
-          <ProfileSection icon={MapPin} title="Location" subtitle={`Currently set to ${district}`}>
+          <SectionCard icon={MapPin} title="Location" subtitle={`Currently set to ${district}`}>
             <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
               {[DEFAULT_LOCATION, ...DAVAO_DISTRICTS].map((d) => (
                 <Chip key={d} label={d} active={district === d} onPress={() => setDistrict(d)} />
               ))}
             </View>
-          </ProfileSection>
+          </SectionCard>
 
-          <TouchableOpacity
-            onPress={save}
-            disabled={saving}
-            activeOpacity={0.85}
-            accessibilityRole="button"
-            accessibilityLabel="Save Changes"
-            accessibilityState={{ disabled: saving, busy: saving }}
-            style={{
-              marginTop: 4,
-              height: 56,
-              borderRadius: 16,
-              backgroundColor: T.primary,
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 10,
-              opacity: saving ? 0.8 : 1,
-              shadowColor: T.primary,
-              shadowOffset: { width: 0, height: 10 },
-              shadowOpacity: 0.3,
-              shadowRadius: 18,
-              elevation: 6,
-            }}
-          >
-            {saving ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <>
-                <Check size={20} color="#fff" strokeWidth={2.5} />
-                <Text style={{ fontSize: 17, color: "#fff", fontFamily: FONT_BOLD }}>Save Changes</Text>
-              </>
-            )}
-          </TouchableOpacity>
+          <Btn title="Save Changes" icon={Check} size="hero" loading={saving} onPress={save} style={{ marginTop: 4 }} />
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
-  );
-}
-
-function ProfileSection({ icon: Icon, title, subtitle, children }: {
-  icon: typeof User;
-  title: string;
-  subtitle?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <View style={{ backgroundColor: T.white, borderRadius: 22, padding: 18, ...shadow }}>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 16 }}>
-        <View style={{ width: 34, height: 34, borderRadius: 11, backgroundColor: T.primaryLight, alignItems: "center", justifyContent: "center" }}>
-          <Icon size={17} color={T.primary} strokeWidth={2.25} />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 16, color: T.dark, fontFamily: FONT_BOLD }}>{title}</Text>
-          {subtitle ? <Text style={{ fontSize: 12, color: T.medium, fontFamily: FONT, marginTop: 1 }}>{subtitle}</Text> : null}
-        </View>
-      </View>
-      {children}
-    </View>
   );
 }
 
@@ -645,7 +603,7 @@ function IconField({ icon: Icon, label, hint, locked, last, ...input }: {
           borderRadius: 14,
           borderWidth: 1.5,
           borderColor: active ? T.primary : T.border,
-          backgroundColor: locked ? T.bg : active ? T.white : "#FAFAF9",
+          backgroundColor: locked ? T.bg : active ? T.white : T.inputBg,
         }}
       >
         <Icon size={20} color={active ? T.primary : T.medium} strokeWidth={2} />

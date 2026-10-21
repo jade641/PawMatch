@@ -42,7 +42,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { capitalize, docLabel, FONT, FONT_BOLD, FONT_MEDIUM, formatAge, formatDate, shadow, SUBMISSION_STATUS, T, timeAgo } from "../constants/theme";
+import { BRAND, capitalize, docLabel, FONT, FONT_BOLD, FONT_MEDIUM, formatAge, formatDate, shadow, SUBMISSION_STATUS, T, timeAgo } from "../constants/theme";
 import { useApp, useSession } from "../contexts/AppContext";
 import { useAsync } from "../hooks/useAsync";
 import * as api from "../services/api";
@@ -59,6 +59,7 @@ import {
   HeroIconButton,
   InfoRow,
   Loading,
+  DarkModeToggle,
   showMessage,
   Tag,
   VeriBadge,
@@ -340,7 +341,7 @@ export function VetDashboard() {
                 accessibilityLabel="My profile"
                 style={{ borderRadius: 21, borderWidth: 2, borderColor: "rgba(255,255,255,0.7)" }}
               >
-                <Avatar name={name} size={38} color={T.primaryDark} uri={api.avatarUrl(session.user.avatar_url)} />
+                <Avatar name={name} size={38} color={BRAND.orangeDeep} uri={api.avatarUrl(session.user.avatar_url)} />
               </TouchableOpacity>
             </View>
           }
@@ -394,7 +395,7 @@ export function VetDashboard() {
           <TouchableOpacity
             onPress={() => navigate("vet-requests")}
             activeOpacity={0.9}
-            style={{ borderRadius: 24, padding: 20, overflow: "hidden", backgroundColor: T.dark }}
+            style={{ borderRadius: 24, padding: 20, overflow: "hidden", backgroundColor: T.ink }}
           >
             <View style={{ position: "absolute", right: -30, top: -30, width: 140, height: 140, borderRadius: 70, backgroundColor: T.primary, opacity: 0.9 }} />
             <ClipboardList size={34} color="#fff" strokeWidth={2} style={{ position: "absolute", right: 22, top: 20 }} />
@@ -697,7 +698,7 @@ export function VetRequestDetail() {
                     borderRadius: 14,
                     borderWidth: 1.5,
                     borderColor: T.border,
-                    backgroundColor: "#FAFAF9",
+                    backgroundColor: T.inputBg,
                     padding: 14,
                     fontSize: 14,
                     color: T.dark,
@@ -945,7 +946,7 @@ export function VetProfile() {
                 Owners see you as <Text style={{ fontFamily: FONT_BOLD, color: v.available ? T.success : T.medium }}>{v.available ? "Available" : "Busy"}</Text>
               </Text>
             </View>
-            <Switch value={v.available} onValueChange={toggleAvailable} trackColor={{ true: T.primary, false: T.light }} thumbColor={T.white} />
+            <Switch value={v.available} onValueChange={toggleAvailable} trackColor={{ true: T.primary, false: T.light }} thumbColor="#fff" />
           </Panel>
 
           {/* Professional information */}
@@ -1057,6 +1058,13 @@ export function VetSettings() {
                 { icon: Bell, title: "Notifications", subtitle: "Alerts for new documents", tint: T.accentLight, color: T.accent, onPress: () => navigate("notifications") },
               ]}
             />
+          </View>
+
+          <View>
+            <Text style={{ fontSize: 12, color: T.medium, fontFamily: FONT_BOLD, letterSpacing: 0.8, marginBottom: 10, marginLeft: 4 }}>APPEARANCE</Text>
+            <Panel>
+              <DarkModeToggle />
+            </Panel>
           </View>
 
           <View>

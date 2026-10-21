@@ -26,6 +26,7 @@ import {
   FONT_BOLD,
   FONT_MEDIUM,
   formatDate,
+  latestByType,
   shadow,
   SUBMISSION_STATUS,
   T,
@@ -38,7 +39,7 @@ import * as api from "../services/api";
 import { pickDocument, pickImage, type PickedFile, takePhoto } from "../services/media";
 import type { DocType, Submission } from "../types";
 import { MyDogSelector } from "./DogWidgets";
-import { Avatar, Btn, Card, DogImage, EmptyState, ErrorView, Header, Loading, ScoreBar, showMessage, Tag, VeriBadge } from "./ui";
+import { Avatar, Btn, Card, DogImage, EmptyState, ErrorView, Header, HeaderAction, Loading, ScoreBar, showMessage, Tag, TextLink, VeriBadge } from "./ui";
 
 interface StagedDoc {
   type: DocType;
@@ -78,31 +79,30 @@ function ProgressBar({ step }: { step: 1 | 2 | 3 }) {
 
 /* ── Step 1: upload documents (Figure 16) ───────────────────────── */
 export function VerifyUpload() {
-  const { navigate, goBack, canGoBack, params, myDogs, dogsLoaded, activeDog, setActiveDogId } = useApp();
+  const { navigate, replace, goBack, canGoBack, params, myDogs, dogsLoaded, activeDog, setActiveDogId } = useApp();
   const session = useSession();
   const dog = myDogs.find((d) => d.id === (params.dogId ?? activeDog?.id)) ?? myDogs[0];
   const submissions = useAsync(() => (dog ? api.listDogSubmissions(dog.id) : Promise.resolve([])), [dog?.id]);
-  const [selected, setSelected] = useState<DocType>(params.type ?? "vaccination");
+  const [picked, setSelected] = useState<DocType | null>(params.type ?? null);
   const [staged, setStaged] = useState<StagedDoc[]>([]);
   const [uploading, setUploading] = useState(false);
 
-  useEffect(() => setStaged([]), [dog?.id]);
+  const byType = useMemo(() => latestByType(submissions.data ?? []), [submissions.data]);
+  const statusOf = (type: DocType) => byType.get(type)?.status;
 
-  const statusOf = (type: DocType) => {
-    const list = (submissions.data ?? []).filter((s) => s.submission_type === type);
-    if (list.some((s) => s.status === "vet_verified")) return "vet_verified";
-    return list[0]?.status;
+  // Until the owner picks one, start on the first document that still needs submitting.
+  const firstOpen = DOC_TYPES.find((d) => {
+    const list = (submissions.data ?? []).filter((s) => s.submission_type === d.type);
+    return !list.some((s) => s.status === "vet_verified" || s.status === "owner_submitted");
+  })?.type;
+  const selected: DocType = picked ?? firstOpen ?? "vaccination";
+
+  // Re-open the screen for the chosen dog so its documents and staged uploads start fresh.
+  // (Selecting via the active dog alone did nothing when the screen was opened with a dogId.)
+  const chooseDog = (id: string) => {
+    setActiveDogId(id);
+    if (id !== dog?.id) replace("verify-upload", { dogId: id });
   };
-
-  // Without an explicit type, start on the first document that still needs submitting.
-  useEffect(() => {
-    if (params.type || !submissions.data) return;
-    const firstOpen = DOC_TYPES.find((d) => {
-      const list = submissions.data!.filter((s) => s.submission_type === d.type);
-      return !list.some((s) => s.status === "vet_verified" || s.status === "owner_submitted");
-    });
-    if (firstOpen) setSelected(firstOpen.type);
-  }, [submissions.data, params.type]);
 
   if (!dogsLoaded) return <Loading />;
   if (!dog) {
@@ -142,7 +142,7 @@ export function VerifyUpload() {
           Upload documents to earn your verification badge. More documents = higher tier.
         </Text>
 
-        {myDogs.length > 1 && <MyDogSelector dogs={myDogs} activeId={dog.id} onSelect={setActiveDogId} label="Dog to verify" />}
+        {myDogs.length > 1 && <MyDogSelector dogs={myDogs} activeId={dog.id} onSelect={chooseDog} label="Dog to verify" />}
 
         <Card style={{ gap: 10 }}>
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
@@ -258,9 +258,7 @@ export function VerifyUpload() {
           disabled={staged.length === 0 || uploading}
           onPress={() => navigate("verify-choose", { dogId: dog.id, docs: staged })}
         />
-        <TouchableOpacity onPress={() => navigate("verify-status", { dogId: dog.id })} style={{ alignItems: "center" }}>
-          <Text style={{ color: T.primary, fontFamily: FONT_BOLD }}>View submitted documents →</Text>
-        </TouchableOpacity>
+        <TextLink label="View submitted documents" onPress={() => navigate("verify-status", { dogId: dog.id })} style={{ alignSelf: "center" }} />
       </ScrollView>
     </View>
   );
@@ -287,6 +285,9 @@ export function VerifyChoose() {
     try {
       const created = await api.submitDocuments(params.dogId, selected, docs.map((d) => ({ type: d.type, path: d.path })));
       showToast("Sent for review", "The verifier has been notified.", "success");
+      // Leave the upload step too: its staged files are now submitted, and going back to it
+      // would let the same documents be sent (and the verifier notified) a second time.
+      goBack();
       replace("verify-status", { dogId: params.dogId, submissionIds: created.map((s) => s.id) });
     } catch (e) {
       showMessage("Couldn't submit", api.errorMessage(e));
@@ -302,10 +303,7 @@ export function VerifyChoose() {
         icon={Shield}
         onBack={goBack}
         right={
-          <TouchableOpacity onPress={() => { setSelected(null); setSearch(""); }} style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-            <RotateCcw size={14} color={T.primary} />
-            <Text style={{ fontSize: 13, color: T.primary, fontFamily: FONT_BOLD }}>Reset</Text>
-          </TouchableOpacity>
+          <HeaderAction icon={RotateCcw} label="Reset" onPress={() => { setSelected(null); setSearch(""); }} />
         }
       />
       <ProgressBar step={2} />
@@ -320,6 +318,7 @@ export function VerifyChoose() {
             onChangeText={setSearch}
             placeholder="Search for a veterinarian or clinic"
             placeholderTextColor={T.light}
+            accessibilityLabel="Search verifiers"
             style={{ flex: 1, fontSize: 14, color: T.dark, fontFamily: FONT }}
           />
         </View>
@@ -339,6 +338,7 @@ export function VerifyChoose() {
                 onPress={() => setSelected(v.user_id)}
                 accessibilityRole="radio"
                 accessibilityState={{ selected: isSelected }}
+                accessibilityLabel={`${v.name}, ${v.role}${v.clinic ? `, ${v.clinic}` : ""}, ${v.available ? "available" : "busy"}`}
                 style={{
                   flexDirection: "row",
                   alignItems: "center",
@@ -403,7 +403,7 @@ function SubmissionRow({ s }: { s: Submission }) {
 }
 
 export function VerifyStatus() {
-  const { navigate, replace, goBack, canGoBack, params, myDogs, activeDog, setActiveDogId, lastNotification, reloadDogs } = useApp();
+  const { navigate, replace, goBack, canGoBack, params, myDogs, dogsLoaded, activeDog, setActiveDogId, lastNotification, reloadDogs } = useApp();
   const dog = myDogs.find((d) => d.id === (params.dogId ?? activeDog?.id)) ?? myDogs[0];
   const focusIds: string[] = useMemo(() => params.submissionIds ?? [], [params.submissionIds]);
   const submissions = useAsync(
@@ -426,6 +426,7 @@ export function VerifyStatus() {
     return batch;
   }, [submissions.data, focusIds]);
 
+  if (!dogsLoaded) return <Loading />;
   if (!dog) {
     return (
       <View style={{ flex: 1, backgroundColor: T.bg }}>
@@ -498,9 +499,7 @@ export function VerifyStatus() {
                   </Text>
                 </>
               )}
-              <TouchableOpacity onPress={() => navigate("audit-trail", { dogId: dog.id })}>
-                <Text style={{ fontSize: 14, color: T.primary, fontFamily: FONT_BOLD, textDecorationLine: "underline" }}>View Audit Trail</Text>
-              </TouchableOpacity>
+              <TextLink label="View Audit Trail" onPress={() => navigate("audit-trail", { dogId: dog.id })} />
             </View>
 
             <Text style={{ fontSize: 14, color: T.dark, fontFamily: FONT_BOLD }}>All submissions for {dog.name}</Text>
@@ -511,19 +510,20 @@ export function VerifyStatus() {
         )}
 
         <Btn title="Upload more documents" icon={Upload} variant="outline" onPress={() => navigate("verify-upload", { dogId: dog.id })} />
-        <Btn title="Back to Profile" onPress={() => navigate("dog-profile", { dogId: dog.id, tab: "health" })} />
+        <Btn title={`View ${dog.name}'s Health Records`} onPress={() => navigate("dog-profile", { dogId: dog.id, tab: "health" })} />
       </ScrollView>
     </View>
   );
 }
 
 /* ── Audit trail ────────────────────────────────────────────────── */
+// Colors are getters so they follow the active theme.
 const AUDIT_STYLE = {
-  submitted: { Icon: Upload, color: T.accent, label: "Submitted" },
-  approved: { Icon: CheckCircle, color: T.success, label: "Approved" },
-  rejected: { Icon: XCircle, color: T.error, label: "Rejected" },
-  tier_changed: { Icon: Award, color: T.secondaryDark, label: "Badge updated" },
-} as const;
+  submitted: { Icon: Upload, get color() { return T.accent; }, label: "Submitted" },
+  approved: { Icon: CheckCircle, get color() { return T.success; }, label: "Approved" },
+  rejected: { Icon: XCircle, get color() { return T.error; }, label: "Rejected" },
+  tier_changed: { Icon: Award, get color() { return T.secondaryDark; }, label: "Badge updated" },
+};
 
 export function AuditTrailScreen() {
   const { goBack, params } = useApp();

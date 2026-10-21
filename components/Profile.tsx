@@ -1,7 +1,5 @@
 import {
-  ArrowLeft,
   Award,
-  Bell,
   Calendar,
   Camera,
   Check,
@@ -17,7 +15,6 @@ import {
   LogOut,
   Mars,
   MapPin,
-  MessageCircle,
   MessageSquare,
   PawPrint,
   Plus,
@@ -35,10 +32,7 @@ import {
   X,
 } from "lucide-react-native";
 import { useMemo, useState } from "react";
-import { StatusBar } from "expo-status-bar";
-import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { LinearGradient } from "expo-linear-gradient";
+import { KeyboardAvoidingView, Platform, ScrollView, Text, TouchableOpacity, View } from "react-native";
 import {
   capitalize,
   DOC_TYPES,
@@ -47,6 +41,8 @@ import {
   FONT_MEDIUM,
   formatAge,
   formatDate,
+  latestByType,
+  oppositeSex,
   shadow,
   SUBMISSION_STATUS,
   T,
@@ -57,7 +53,7 @@ import { useAsync } from "../hooks/useAsync";
 import * as api from "../services/api";
 import { computeCompatibility, explainCompatibility } from "../services/compatibility";
 import { pickImage, type PickedFile } from "../services/media";
-import type { Dog, DocType, Sex, Size, Submission } from "../types";
+import type { Dog, Sex, Size } from "../types";
 import { BreedInput, ColorCombobox, MyDogSelector, TemperamentPicker, TemperamentTags, TrustIndicators } from "./DogWidgets";
 import { CompatibilityBreakdownCard } from "./FloatingMatchResults";
 import {
@@ -70,67 +66,24 @@ import {
   ErrorView,
   Field,
   Header,
+  HeroHeader,
+  HeroIconButton,
   InfoRow,
   ListItem,
   Loading,
   ScoreBar,
+  SectionCard,
   SectionTitle,
+  SegmentedTabs,
   showMessage,
   Stars,
+  DarkModeToggle,
   Tag,
+  TextLink,
   VeriBadge,
 } from "./ui";
 
 /* ── Shared pieces ──────────────────────────────────────────────── */
-function TabBar<K extends string>({ tabs, value, onChange }: { tabs: [K, string, typeof FileText][]; value: K; onChange: (k: K) => void }) {
-  return (
-    <View
-      style={{
-        flexDirection: "row",
-        marginHorizontal: 20,
-        marginVertical: 16,
-        borderRadius: 12,
-        overflow: "hidden",
-        borderWidth: 1,
-        borderColor: T.border,
-      }}
-    >
-      {tabs.map(([id, label, Icon]) => (
-        <TouchableOpacity
-          key={id}
-          onPress={() => onChange(id)}
-          accessibilityRole="tab"
-          accessibilityState={{ selected: value === id }}
-          style={{
-            flex: 1,
-            paddingVertical: 10,
-            backgroundColor: value === id ? T.primary : T.white,
-            alignItems: "center",
-            flexDirection: "row",
-            justifyContent: "center",
-            gap: 6,
-          }}
-        >
-          <Icon size={14} color={value === id ? "#fff" : T.medium} strokeWidth={1.6} />
-          <Text style={{ fontSize: 12, color: value === id ? "#fff" : T.medium, fontFamily: FONT_BOLD }}>{label}</Text>
-        </TouchableOpacity>
-      ))}
-    </View>
-  );
-}
-
-/** Newest submission per document type, except that a verified one always wins. Input is newest-first. */
-function latestByType(submissions: Submission[]) {
-  const map = new Map<DocType, Submission>();
-  for (const s of submissions) {
-    const current = map.get(s.submission_type);
-    if (!current || (current.status !== "vet_verified" && s.status === "vet_verified")) {
-      map.set(s.submission_type, s);
-    }
-  }
-  return map;
-}
-
 function DogHeaderBlock({ dog }: { dog: Dog }) {
   return (
     <View style={{ alignItems: "center", paddingTop: 20, paddingBottom: 18, backgroundColor: T.white }}>
@@ -191,21 +144,17 @@ function TierCard({ dog, onAudit }: { dog: Dog; onAudit: () => void }) {
           <ScoreBar score={dog.score} showLabel />
         </View>
       </View>
-      <TouchableOpacity onPress={onAudit} style={{ marginTop: 4 }}>
-        <Text style={{ fontSize: 13, color: T.primaryDark, fontFamily: FONT_BOLD, textDecorationLine: "underline" }}>
-          View Audit Trail →
-        </Text>
-      </TouchableOpacity>
+      <TextLink label="View Audit Trail" onPress={onAudit} style={{ marginTop: 4, alignSelf: "flex-start" }} />
     </View>
   );
 }
 
 /* ── My Dog profile (Figure 15) ─────────────────────────────────── */
 export function DogProfile() {
-  const { navigate, params, myDogs, dogsLoaded, reloadDogs, setActiveDogId, showToast, lastNotification } = useApp();
+  const { navigate, params, myDogs, dogsLoaded, reloadDogs, activeDog, setActiveDogId, showToast, lastNotification } = useApp();
   const session = useSession();
   const [tab, setTab] = useState<"info" | "health" | "gallery">(params.tab ?? "info");
-  const initialIndex = Math.max(0, myDogs.findIndex((d) => d.id === params.dogId));
+  const initialIndex = Math.max(0, myDogs.findIndex((d) => d.id === (params.dogId ?? activeDog?.id)));
   const [index, setIndex] = useState(initialIndex);
   const [busy, setBusy] = useState(false);
   const dog = myDogs[Math.min(index, myDogs.length - 1)];
@@ -237,6 +186,7 @@ export function DogProfile() {
   };
 
   const addPhoto = async () => {
+    if (busy) return;
     const file = await pickImage(false);
     if (!file) return;
     setBusy(true);
@@ -254,6 +204,8 @@ export function DogProfile() {
 
   const removePhoto = (url: string) =>
     confirmAction("Remove photo?", "This photo will be removed from the gallery.", "Remove", async () => {
+      if (busy) return;
+      setBusy(true);
       try {
         if (url === dog.img) {
           const [next, ...rest] = dog.photos;
@@ -262,17 +214,25 @@ export function DogProfile() {
           await api.updateDog(dog.id, { photos: dog.photos.filter((p) => p !== url) });
         }
         await reloadDogs();
+        showToast("Photo removed", undefined, "success");
       } catch (e) {
         showMessage("Couldn't remove photo", api.errorMessage(e));
+      } finally {
+        setBusy(false);
       }
     }, true);
 
   const makeMain = async (url: string) => {
+    if (busy) return;
+    setBusy(true);
     try {
       await api.updateDog(dog.id, { img: url, photos: [...(dog.img ? [dog.img] : []), ...dog.photos.filter((p) => p !== url)] });
       await reloadDogs();
+      showToast("Profile photo updated", undefined, "success");
     } catch (e) {
       showMessage("Couldn't update photo", api.errorMessage(e));
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -336,14 +296,15 @@ export function DogProfile() {
           </View>
         )}
         <DogHeaderBlock dog={dog} />
-        <TabBar
+        <SegmentedTabs
           tabs={[
-            ["info", "Basic Info", FileText],
-            ["health", "Health", Stethoscope],
-            ["gallery", "Gallery", Camera],
+            { id: "info", label: "Basic Info", icon: FileText },
+            { id: "health", label: "Health", icon: Stethoscope },
+            { id: "gallery", label: "Gallery", icon: Camera },
           ]}
           value={tab}
           onChange={setTab}
+          style={{ marginHorizontal: 20, marginVertical: 16 }}
         />
 
         {tab === "info" && (
@@ -382,7 +343,9 @@ export function DogProfile() {
                         <Text style={{ fontSize: 12, color: T.medium, fontFamily: FONT }}>With {s.verifier_name} for review</Text>
                       )}
                       {s?.status === "verification_failed" && (
-                        <Text style={{ fontSize: 12, color: T.error, fontFamily: FONT }}>Remarks: {s.notes}</Text>
+                        <Text style={{ fontSize: 12, color: T.error, fontFamily: FONT }}>
+                          {s.notes ? `Not verified: ${s.notes}` : "Not verified — please upload a clearer copy."}
+                        </Text>
                       )}
                     </View>
                     {s && s.status !== "verification_failed" ? (
@@ -390,6 +353,9 @@ export function DogProfile() {
                     ) : (
                       <TouchableOpacity
                         onPress={() => navigate("verify-upload", { dogId: dog.id, type: d.type })}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${s ? "Re-upload" : "Upload"} ${d.label}`}
+                        hitSlop={6}
                         style={{ flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12, backgroundColor: T.primaryLight }}
                       >
                         <Upload size={12} color={T.primaryDark} strokeWidth={2} />
@@ -411,7 +377,13 @@ export function DogProfile() {
             <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
               {gallery.map((url) => (
                 <View key={url} style={{ width: "31%" }}>
-                  <TouchableOpacity onPress={() => url !== dog.img && makeMain(url)} activeOpacity={0.8}>
+                  <TouchableOpacity
+                    onPress={() => url !== dog.img && makeMain(url)}
+                    disabled={busy}
+                    activeOpacity={0.8}
+                    accessibilityRole="button"
+                    accessibilityLabel={url === dog.img ? "Current profile photo" : "Make this the profile photo"}
+                  >
                     <DogImage uri={url} width="100%" height={104} />
                   </TouchableOpacity>
                   {url === dog.img && (
@@ -421,7 +393,9 @@ export function DogProfile() {
                   )}
                   <TouchableOpacity
                     onPress={() => removePhoto(url)}
+                    disabled={busy}
                     accessibilityRole="button" accessibilityLabel="Remove photo"
+                    hitSlop={10}
                     style={{ position: "absolute", right: 4, top: 4, width: 22, height: 22, borderRadius: 11, backgroundColor: "rgba(0,0,0,0.55)", alignItems: "center", justifyContent: "center" }}
                   >
                     <X size={13} color="#fff" />
@@ -431,6 +405,9 @@ export function DogProfile() {
               <TouchableOpacity
                 onPress={addPhoto}
                 disabled={busy}
+                accessibilityRole="button"
+                accessibilityLabel="Add photo"
+                accessibilityState={{ busy }}
                 style={{
                   width: "31%",
                   height: 104,
@@ -444,7 +421,7 @@ export function DogProfile() {
                   gap: 4,
                 }}
               >
-                {busy ? <Text style={{ color: T.primary, fontFamily: FONT }}>Uploading…</Text> : <Plus size={24} color={T.primary} strokeWidth={1.5} />}
+                {busy ? <Text style={{ color: T.primary, fontFamily: FONT }}>Saving…</Text> : <Plus size={24} color={T.primary} strokeWidth={1.5} />}
               </TouchableOpacity>
             </View>
             <Text style={{ fontSize: 12, color: T.medium, fontFamily: FONT, marginTop: 12 }}>
@@ -531,39 +508,16 @@ function DogForm({ existing }: { existing?: Dog }) {
   };
 
   const preview = photo?.uri ?? existing?.img ?? null;
-  const insets = useSafeAreaInsets();
 
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: T.bg }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-      <StatusBar style="light" />
       <ScrollView contentContainerStyle={{ paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
-        {/* Hero header */}
-        <View style={{ paddingTop: Math.max(insets.top, 16) + 8, paddingBottom: 84, paddingHorizontal: 20, overflow: "hidden", borderBottomLeftRadius: 28, borderBottomRightRadius: 28 }}>
-          <LinearGradient colors={[T.primary, T.primaryDark]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }} />
-          <View style={{ position: "absolute", width: 200, height: 200, borderRadius: 100, backgroundColor: "rgba(255,255,255,0.08)", top: -60, right: -50 }} />
-          <PawPrint size={22} color="#fff" style={{ position: "absolute", bottom: 40, left: 36, opacity: 0.18, transform: [{ rotate: "-20deg" }] }} />
-          <PawPrint size={18} color="#fff" style={{ position: "absolute", bottom: 60, right: 50, opacity: 0.18, transform: [{ rotate: "20deg" }] }} />
-
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-            <TouchableOpacity
-              onPress={goBack}
-              accessibilityRole="button"
-              accessibilityLabel="Back"
-              hitSlop={8}
-              style={{ width: 40, height: 40, borderRadius: 14, backgroundColor: "rgba(255,255,255,0.22)", alignItems: "center", justifyContent: "center" }}
-            >
-              <ArrowLeft size={20} color="#fff" strokeWidth={2.5} />
-            </TouchableOpacity>
-            <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 22, color: "#fff", fontFamily: FONT_BOLD, letterSpacing: -0.3 }} numberOfLines={1}>
-                {existing ? `Edit ${existing.name}` : "Add New Dog"}
-              </Text>
-              <Text style={{ fontSize: 13, color: "rgba(255,255,255,0.85)", fontFamily: FONT, marginTop: 2 }}>
-                {existing ? "Keep your dog's profile up to date" : "Tell us about your furry friend"}
-              </Text>
-            </View>
-          </View>
-        </View>
+        <HeroHeader
+          title={existing ? `Edit ${existing.name}` : "Add New Dog"}
+          subtitle={existing ? "Keep your dog's profile up to date" : "Tell us about your furry friend"}
+          onBack={goBack}
+          overlap={62}
+        />
 
         {/* Photo picker overlapping the hero */}
         <View style={{ alignItems: "center", marginTop: -64, marginBottom: 20 }}>
@@ -627,7 +581,7 @@ function DogForm({ existing }: { existing?: Dog }) {
         </View>
 
         <View style={{ paddingHorizontal: 16, gap: 16 }}>
-          <FormSection icon={PawPrint} title="Basic Info">
+          <SectionCard icon={PawPrint} title="Basic Info">
             <Field label="Dog's Name *" value={form.name} onChangeText={(v) => set("name", v)} placeholder="e.g. Bella" maxLength={40} error={errors.name} />
 
             <Text style={{ fontSize: 13, color: T.dark, marginBottom: 6, fontFamily: FONT_MEDIUM }}>Breed *</Text>
@@ -642,9 +596,9 @@ function DogForm({ existing }: { existing?: Dog }) {
               error={errors.age}
               style={{ marginBottom: 0 }}
             />
-          </FormSection>
+          </SectionCard>
 
-          <FormSection icon={Ruler} title="Physical Traits">
+          <SectionCard icon={Ruler} title="Physical Traits">
             <Text style={{ fontSize: 13, color: T.dark, marginBottom: 8, fontFamily: FONT_MEDIUM }}>Sex *</Text>
             <View style={{ flexDirection: "row", gap: 10, marginBottom: 18 }}>
               {(
@@ -680,14 +634,14 @@ function DogForm({ existing }: { existing?: Dog }) {
             <Text style={{ fontSize: 13, color: T.dark, marginBottom: 6, fontFamily: FONT_MEDIUM }}>Color *</Text>
             <ColorCombobox value={form.color} onChange={(v) => set("color", v)} />
             {errors.color ? <Text style={{ fontSize: 12, color: T.error, marginTop: -8, fontFamily: FONT }}>{errors.color}</Text> : null}
-          </FormSection>
+          </SectionCard>
 
-          <FormSection icon={Smile} title="Personality" subtitle="Pick up to 3 traits that describe your dog">
+          <SectionCard icon={Smile} title="Personality" subtitle="Pick up to 3 traits that describe your dog">
             <TemperamentPicker value={form.temperament} onChange={(v) => set("temperament", v)} />
             {errors.temperament ? <Text style={{ fontSize: 12, color: T.error, marginTop: 6, fontFamily: FONT }}>{errors.temperament}</Text> : null}
-          </FormSection>
+          </SectionCard>
 
-          <FormSection icon={FileText} title="About" subtitle="Optional">
+          <SectionCard icon={FileText} title="About" subtitle="Optional">
             <Field
               value={form.description}
               onChangeText={(v) => set("description", v)}
@@ -696,66 +650,19 @@ function DogForm({ existing }: { existing?: Dog }) {
               maxLength={1000}
               style={{ marginBottom: 0 }}
             />
-          </FormSection>
+          </SectionCard>
 
-          <TouchableOpacity
+          <Btn
+            title={existing ? "Save Changes" : "Add Dog Profile"}
+            icon={existing ? Check : Plus}
+            size="hero"
+            loading={saving}
             onPress={submit}
-            disabled={saving}
-            activeOpacity={0.85}
-            accessibilityRole="button"
-            accessibilityLabel={existing ? "Save Changes" : "Add Dog Profile"}
-            accessibilityState={{ disabled: saving, busy: saving }}
-            style={{
-              marginTop: 4,
-              height: 56,
-              borderRadius: 16,
-              backgroundColor: T.primary,
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 10,
-              opacity: saving ? 0.8 : 1,
-              shadowColor: T.primary,
-              shadowOffset: { width: 0, height: 10 },
-              shadowOpacity: 0.3,
-              shadowRadius: 18,
-              elevation: 6,
-            }}
-          >
-            {saving ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <>
-                {existing ? <Check size={20} color="#fff" strokeWidth={2.5} /> : <Plus size={20} color="#fff" strokeWidth={2.5} />}
-                <Text style={{ fontSize: 17, color: "#fff", fontFamily: FONT_BOLD }}>{existing ? "Save Changes" : "Add Dog Profile"}</Text>
-              </>
-            )}
-          </TouchableOpacity>
+            style={{ marginTop: 4 }}
+          />
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
-  );
-}
-
-function FormSection({ icon: Icon, title, subtitle, children }: {
-  icon: typeof PawPrint;
-  title: string;
-  subtitle?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <View style={{ backgroundColor: T.white, borderRadius: 22, padding: 18, ...shadow }}>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 16 }}>
-        <View style={{ width: 34, height: 34, borderRadius: 11, backgroundColor: T.primaryLight, alignItems: "center", justifyContent: "center" }}>
-          <Icon size={17} color={T.primary} strokeWidth={2.25} />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 16, color: T.dark, fontFamily: FONT_BOLD }}>{title}</Text>
-          {subtitle ? <Text style={{ fontSize: 12, color: T.medium, fontFamily: FONT, marginTop: 1 }}>{subtitle}</Text> : null}
-        </View>
-      </View>
-      {children}
-    </View>
   );
 }
 
@@ -782,7 +689,7 @@ function SegmentButton({ label, active, onPress, icon, stacked }: {
         borderRadius: 14,
         borderWidth: 1.5,
         borderColor: active ? T.primary : T.border,
-        backgroundColor: active ? T.primaryLight : "#FAFAF9",
+        backgroundColor: active ? T.primaryLight : T.inputBg,
         alignItems: "center",
       }}
     >
@@ -797,9 +704,16 @@ export function AddDog() {
 }
 
 export function EditDog() {
-  const { params, myDogs } = useApp();
+  const { params, myDogs, dogsLoaded, goBack } = useApp();
   const dog = myDogs.find((d) => d.id === params.dogId);
-  if (!dog) return <Loading />;
+  if (!dog) {
+    if (!dogsLoaded) return <Loading />;
+    return (
+      <ScreenShell title="Edit Dog" onBack={goBack}>
+        <ErrorView message="This dog profile no longer exists." />
+      </ScreenShell>
+    );
+  }
   return <DogForm existing={dog} />;
 }
 
@@ -809,112 +723,214 @@ export function OwnerProfile() {
   const session = useSession();
   const owner = session.owner;
   const memberSince = formatDate(session.user.created_at, { day: undefined });
+  const hasReviews = !!owner && owner.review_count > 0;
+
+  const stats = [
+    { label: myDogs.length === 1 ? "Dog" : "Dogs", value: String(myDogs.length), go: () => navigate(myDogs.length ? "dog-profile" : "add-dog") },
+    { label: owner?.completed_matches === 1 ? "Match" : "Matches", value: String(owner?.completed_matches ?? 0), go: () => navigate("reputation") },
+    { label: hasReviews ? `${owner!.review_count} review${owner!.review_count === 1 ? "" : "s"}` : "No reviews", value: hasReviews ? `${owner!.rating.toFixed(1)}★` : "—", go: () => navigate("reputation") },
+  ];
 
   return (
     <View style={{ flex: 1, backgroundColor: T.bg }}>
-      <Header title="My Profile" icon={User} onBack={canGoBack ? goBack : undefined} />
       <ScrollView contentContainerStyle={{ paddingBottom: 32 }}>
-        <View style={{ alignItems: "center", paddingVertical: 22, paddingHorizontal: 20, backgroundColor: T.white, gap: 4 }}>
-          <View>
-            <Avatar name={session.user.full_name} size={80} uri={api.avatarUrl(session.user.avatar_url)} />
-            {owner?.verified_at && (
-              <View style={{ position: "absolute", right: -4, bottom: -4 }}>
-                <Award size={22} color={T.star} fill={T.star} strokeWidth={1.5} />
-              </View>
-            )}
-          </View>
-          <Text style={{ fontSize: 20, color: T.dark, fontFamily: FONT_BOLD, marginTop: 10 }}>{session.user.full_name}</Text>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 4, flexWrap: "wrap", justifyContent: "center" }}>
-            <MapPin size={12} color={T.medium} />
-            <Text style={{ fontSize: 13, color: T.medium, fontFamily: FONT }}>{session.user.location}</Text>
-            <Text style={{ color: T.medium }}> • </Text>
-            <Calendar size={12} color={T.medium} />
-            <Text style={{ fontSize: 13, color: T.medium, fontFamily: FONT }}>Member since {memberSince}</Text>
-          </View>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4 }}>
-            <Stars rating={owner?.rating ?? 0} />
-            <Text style={{ fontSize: 14, color: T.dark, fontFamily: FONT_BOLD }}>
-              {owner && owner.review_count > 0 ? `${owner.rating.toFixed(1)} / 5.0` : "No reviews yet"}
-            </Text>
-          </View>
-        </View>
+        <HeroHeader
+          title="My Profile"
+          subtitle="Your account, dogs and reputation"
+          onBack={canGoBack ? goBack : undefined}
+          overlap={56}
+          right={<HeroIconButton icon={Edit} label="Edit profile" onPress={() => navigate("edit-profile")} />}
+        />
 
-        <View style={{ paddingHorizontal: 20, marginTop: 20 }}>
-          <SectionTitle title="My Dogs" icon={PawPrint} />
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12, paddingBottom: 6 }}>
-            {myDogs.map((dog) => (
-              <TouchableOpacity
-                key={dog.id}
-                onPress={() => navigate("dog-profile", { dogId: dog.id })}
-                style={{ alignItems: "center", gap: 6, padding: 12, borderRadius: 16, backgroundColor: T.white, width: 104, ...shadow }}
+        {/* Profile card overlapping the hero */}
+        <View style={{ marginTop: -56, marginHorizontal: 20, borderRadius: 22, backgroundColor: T.white, padding: 18, ...shadow, elevation: 6 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
+            <TouchableOpacity
+              onPress={() => navigate("edit-profile")}
+              activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel="Change profile picture"
+            >
+              <View style={{ padding: 3, borderRadius: 40, backgroundColor: T.primaryLight }}>
+                <Avatar name={session.user.full_name} size={68} uri={api.avatarUrl(session.user.avatar_url)} />
+              </View>
+              <View
+                style={{
+                  position: "absolute",
+                  right: -2,
+                  bottom: -2,
+                  width: 26,
+                  height: 26,
+                  borderRadius: 13,
+                  backgroundColor: T.primary,
+                  borderWidth: 2.5,
+                  borderColor: T.white,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
               >
-                <View>
-                  <DogImage uri={dog.img} width={64} height={64} />
-                  <View style={{ position: "absolute", right: -6, bottom: -6, backgroundColor: T.white, borderRadius: 10 }}>
-                    {dog.verified ? <CheckCircle size={18} color={T.success} /> : <Clock size={18} color={T.warning} />}
-                  </View>
-                </View>
-                <Text style={{ fontSize: 13, color: T.dark, fontFamily: FONT_BOLD }} numberOfLines={1}>{dog.name}</Text>
-                <Text style={{ fontSize: 11, color: T.medium, fontFamily: FONT, textAlign: "center" }} numberOfLines={2}>{dog.breed}</Text>
+                <Camera size={12} color="#fff" strokeWidth={2.5} />
+              </View>
+            </TouchableOpacity>
+
+            <View style={{ flex: 1, gap: 4 }}>
+              <Text style={{ fontSize: 18, color: T.dark, fontFamily: FONT_BOLD }} numberOfLines={2}>
+                {session.user.full_name}
+              </Text>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                <MapPin size={12} color={T.medium} />
+                <Text style={{ fontSize: 12, color: T.medium, fontFamily: FONT, flexShrink: 1 }} numberOfLines={1}>
+                  {session.user.location}
+                </Text>
+              </View>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                <Calendar size={12} color={T.medium} />
+                <Text style={{ fontSize: 12, color: T.medium, fontFamily: FONT }}>Member since {memberSince}</Text>
+              </View>
+              <View style={{ marginTop: 2 }}>
+                {owner?.verified_at ? (
+                  <Tag label="✓ Verified Owner" tone="success" />
+                ) : (
+                  <Tag label="Not yet verified" tone="warning" />
+                )}
+              </View>
+            </View>
+          </View>
+
+          <View style={{ flexDirection: "row", marginTop: 16, paddingTop: 14, borderTopWidth: 1, borderTopColor: T.bg }}>
+            {stats.map((s, i) => (
+              <TouchableOpacity
+                key={i}
+                onPress={s.go}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={`${s.value === "—" ? "No" : s.value} ${s.label}`}
+                style={{ flex: 1, alignItems: "center", borderLeftWidth: i === 0 ? 0 : 1, borderLeftColor: T.border }}
+              >
+                <Text style={{ fontSize: 20, color: T.dark, fontFamily: FONT_BOLD }}>{s.value}</Text>
+                <Text style={{ fontSize: 12, color: T.medium, fontFamily: FONT, marginTop: 2 }}>{s.label}</Text>
               </TouchableOpacity>
             ))}
-            <TouchableOpacity
-              onPress={() => navigate("add-dog")}
-              style={{
-                width: 90,
-                minHeight: 126,
-                borderRadius: 16,
-                backgroundColor: T.primaryLight,
-                borderWidth: 2,
-                borderColor: T.primary + "60",
-                borderStyle: "dashed",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 4,
-              }}
-            >
-              <Plus size={24} color={T.primary} strokeWidth={1.5} />
-              <Text style={{ fontSize: 12, color: T.primary, fontFamily: FONT_BOLD }}>Add Dog</Text>
-            </TouchableOpacity>
-          </ScrollView>
+          </View>
         </View>
 
-        <Card style={{ marginHorizontal: 20, marginTop: 16 }} onPress={() => navigate("reputation")}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 4 }}>
-            <Star size={16} color={T.dark} strokeWidth={1.6} />
-            <Text style={{ fontSize: 14, color: T.dark, fontFamily: FONT_BOLD }}>Reputation & History</Text>
+        <View style={{ paddingHorizontal: 20, marginTop: 24 }}>
+          <SectionTitle title="My Dogs" icon={PawPrint} />
+          {myDogs.length === 0 ? (
+            <TouchableOpacity
+              onPress={() => navigate("add-dog")}
+              activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel="Add your first dog"
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 14,
+                padding: 16,
+                borderRadius: 18,
+                backgroundColor: T.primaryLight,
+                borderWidth: 2,
+                borderColor: T.primary + "50",
+                borderStyle: "dashed",
+              }}
+            >
+              <View style={{ width: 48, height: 48, borderRadius: 16, backgroundColor: T.primary, alignItems: "center", justifyContent: "center" }}>
+                <Plus size={24} color="#fff" strokeWidth={2.25} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 15, color: T.primaryDark, fontFamily: FONT_BOLD }}>Add your first dog</Text>
+                <Text style={{ fontSize: 12, color: T.medium, fontFamily: FONT, marginTop: 2, lineHeight: 17 }}>
+                  Create a profile to start getting compatible matches.
+                </Text>
+              </View>
+              <ChevronRight size={20} color={T.primaryDark} />
+            </TouchableOpacity>
+          ) : (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12, paddingBottom: 6 }}>
+              {myDogs.map((dog) => (
+                <TouchableOpacity
+                  key={dog.id}
+                  onPress={() => navigate("dog-profile", { dogId: dog.id })}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${dog.name}, ${dog.breed}, ${dog.verified ? `Tier ${dog.tier} verified` : "not yet verified"}`}
+                  style={{ alignItems: "center", gap: 6, padding: 12, borderRadius: 16, backgroundColor: T.white, width: 112, ...shadow }}
+                >
+                  <View>
+                    <DogImage uri={dog.img} width={72} height={72} radius={36} />
+                    <View style={{ position: "absolute", right: -4, bottom: -4, backgroundColor: T.white, borderRadius: 10 }}>
+                      {dog.verified ? <CheckCircle size={18} color={T.success} /> : <Clock size={18} color={T.warning} />}
+                    </View>
+                  </View>
+                  <Text style={{ fontSize: 13, color: T.dark, fontFamily: FONT_BOLD }} numberOfLines={1}>{dog.name}</Text>
+                  <Text style={{ fontSize: 11, color: T.medium, fontFamily: FONT, textAlign: "center" }} numberOfLines={1}>{dog.breed}</Text>
+                  <VeriBadge tier={dog.tier} />
+                </TouchableOpacity>
+              ))}
+              <TouchableOpacity
+                onPress={() => navigate("add-dog")}
+                accessibilityRole="button"
+                accessibilityLabel="Add dog"
+                style={{
+                  width: 96,
+                  borderRadius: 16,
+                  backgroundColor: T.primaryLight,
+                  borderWidth: 2,
+                  borderColor: T.primary + "60",
+                  borderStyle: "dashed",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 4,
+                }}
+              >
+                <Plus size={24} color={T.primary} strokeWidth={1.75} />
+                <Text style={{ fontSize: 12, color: T.primaryDark, fontFamily: FONT_BOLD }}>Add Dog</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          )}
+        </View>
+
+        <Card
+          style={{ marginHorizontal: 20, marginTop: 20, flexDirection: "row", alignItems: "center", gap: 14, borderRadius: 18 }}
+          onPress={() => navigate("reputation")}
+          accessibilityLabel="Reputation and history"
+        >
+          <View style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: T.secondaryLight, alignItems: "center", justifyContent: "center" }}>
+            <Star size={22} color={T.secondaryDark} fill={hasReviews ? T.secondary : "transparent"} strokeWidth={2} />
           </View>
-          <Text style={{ fontSize: 12, color: T.medium, fontFamily: FONT }}>
-            {owner?.completed_matches ?? 0} completed match{owner?.completed_matches === 1 ? "" : "es"} •{" "}
-            {owner?.review_count ?? 0} review{owner?.review_count === 1 ? "" : "s"}
-            {owner?.verified_at ? ` • Verified since ${formatDate(owner.verified_at, { day: undefined })}` : ""}
-          </Text>
-          <Text style={{ fontSize: 12, color: T.primary, fontFamily: FONT_BOLD, marginTop: 8 }}>View Full Reputation →</Text>
+          <View style={{ flex: 1, gap: 3 }}>
+            <Text style={{ fontSize: 15, color: T.dark, fontFamily: FONT_BOLD }}>Reputation & History</Text>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+              <Stars rating={owner?.rating ?? 0} size={12} />
+              <Text style={{ fontSize: 12, color: T.medium, fontFamily: FONT }}>
+                {hasReviews ? `${owner!.rating.toFixed(1)} / 5.0` : "No reviews yet"}
+              </Text>
+            </View>
+            <Text style={{ fontSize: 12, color: T.medium, fontFamily: FONT }}>Badges, reviews and match history</Text>
+          </View>
+          <ChevronRight size={20} color={T.light} />
         </Card>
 
         {session.verifier && (
-          <View style={{ paddingHorizontal: 20, marginTop: 20 }}>
-            <View style={{ borderRadius: 16, overflow: "hidden" }}>
-              <ListItem
-                icon={Stethoscope}
-                title="Switch to Vet / Breeder"
-                subtitle={session.verifier.approved ? "Review documents sent to you" : "Your application is waiting for approval"}
-                onPress={() => switchPortal("vet")}
-                last
-              />
-            </View>
+          <View style={{ marginHorizontal: 20, marginTop: 16, borderRadius: 18, overflow: "hidden", ...shadow }}>
+            <ListItem
+              icon={Stethoscope}
+              title="Switch to Vet / Breeder"
+              subtitle={session.verifier.approved ? "Review documents sent to you" : "Your application is waiting for approval"}
+              onPress={() => switchPortal("vet")}
+              last
+            />
           </View>
         )}
 
-        <View style={{ paddingHorizontal: 20, marginTop: 20 }}>
+        <View style={{ paddingHorizontal: 20, marginTop: 24 }}>
           <SectionTitle title="Settings" icon={Settings} />
-          <View style={{ borderRadius: 16, overflow: "hidden" }}>
-            <ListItem icon={MessageCircle} title="Requests & Messages" onPress={() => navigate("requests")} />
-            <ListItem icon={Bell} title="Notifications" onPress={() => navigate("notifications")} />
-            <ListItem icon={User} title="Edit Profile" onPress={() => navigate("edit-profile")} />
+          <View style={{ borderRadius: 18, backgroundColor: T.white, padding: 14, marginBottom: 12, ...shadow }}>
+            <DarkModeToggle />
+          </View>
+          <View style={{ borderRadius: 18, overflow: "hidden", backgroundColor: T.white, ...shadow }}>
+            <ListItem icon={User} title="Edit Profile" subtitle="Name, phone, location and photo" onPress={() => navigate("edit-profile")} />
             <ListItem icon={KeyRound} title="Change Password" onPress={() => navigate("change-password")} />
-            <ListItem icon={ShieldCheck} title="My Documents" onPress={() => navigate("verify-status")} />
-            <ListItem icon={HelpCircle} title="Help & About" onPress={() => navigate("settings")} />
+            <ListItem icon={HelpCircle} title="Help & About" subtitle="How matching and verification work" onPress={() => navigate("settings")} />
             <ListItem
               icon={LogOut}
               title="Log Out"
@@ -969,9 +985,7 @@ export function MatchProfileScreen() {
             <SectionTitle title="Trust indicators" icon={ShieldCheck} />
             <TrustIndicators dog={d} />
             <Text style={{ fontSize: 12, color: T.medium, fontFamily: FONT }}>{TIER_DESCRIPTIONS[d.tier]}</Text>
-            <TouchableOpacity onPress={() => navigate("audit-trail", { dogId: d.id })}>
-              <Text style={{ fontSize: 13, color: T.primary, fontFamily: FONT_BOLD }}>View Audit Trail →</Text>
-            </TouchableOpacity>
+            <TextLink label="View Audit Trail" onPress={() => navigate("audit-trail", { dogId: d.id })} style={{ alignSelf: "flex-start" }} />
           </Card>
 
           {match && activeDog && (
@@ -1076,7 +1090,10 @@ export function SendRequest() {
       {target.loading ? (
         <Loading />
       ) : target.error || !target.data ? (
-        <ErrorView message={target.error ?? "This dog profile is no longer available."} />
+        <ErrorView
+          message={target.error ?? "This dog profile is no longer available."}
+          onRetry={target.error ? () => target.reload() : undefined}
+        />
       ) : (
         <ScrollView contentContainerStyle={{ padding: 20, gap: 16, paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
           <Card style={{ gap: 10 }}>
@@ -1097,7 +1114,7 @@ export function SendRequest() {
             <Card>
               <EmptyState
                 icon={PawPrint}
-                title={`Add a ${target.data.sex === "male" ? "female" : "male"} dog first`}
+                title={`Add a ${oppositeSex(target.data.sex)} dog first`}
                 message="Breeding requests are sent on behalf of one of your dogs of the opposite sex."
                 actionLabel="Add Dog Profile"
                 onAction={() => navigate("add-dog")}
@@ -1130,25 +1147,13 @@ export function SendRequest() {
                       <MessageSquare size={16} color={T.dark} strokeWidth={1.6} />
                       <Text style={{ fontSize: 14, color: T.dark, fontFamily: FONT_BOLD }}>Message (optional)</Text>
                     </View>
-                    <TextInput
+                    <Field
                       value={message}
                       onChangeText={setMessage}
                       placeholder={`Introduce ${mine?.name ?? "your dog"}, share health details or suggest a meet-up…`}
-                      placeholderTextColor={T.light}
                       multiline
                       maxLength={2000}
-                      style={{
-                        minHeight: 110,
-                        borderRadius: 12,
-                        borderWidth: 1,
-                        borderColor: T.border,
-                        backgroundColor: T.bg,
-                        padding: 12,
-                        fontSize: 14,
-                        color: T.dark,
-                        fontFamily: FONT,
-                        textAlignVertical: "top",
-                      }}
+                      style={{ marginBottom: 0 }}
                     />
                   </Card>
                   <Btn title="Send Request" icon={CheckCircle} size="large" loading={sending} onPress={send} />

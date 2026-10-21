@@ -8,12 +8,12 @@ import {
   LayoutDashboard,
   Shield,
   ShieldCheck,
-  Star,
   Stethoscope,
+  User,
   X,
 } from "lucide-react-native";
-import { type ComponentType, type ReactNode, useEffect, useRef } from "react";
-import { Animated, BackHandler, Platform, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { type ComponentType, type ReactNode, useEffect, useState } from "react";
+import { Animated, BackHandler, Platform, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { FONT, FONT_BOLD, FONT_MEDIUM, T } from "../constants/theme";
 import { isVetPortal, useApp } from "../contexts/AppContext";
@@ -31,9 +31,9 @@ const OWNER_TABS: Tab[] = [
   { icon: DogIcon, label: "Dog", screens: ["dog-profile", "add-dog", "edit-dog"] },
   { icon: Shield, label: "Verify", screens: ["verify-upload", "verify-choose", "verify-status", "audit-trail"] },
   {
-    icon: Star,
-    label: "Records",
-    screens: ["reputation", "owner-profile", "settings", "edit-profile", "change-password"],
+    icon: User,
+    label: "Profile",
+    screens: ["owner-profile", "reputation", "settings", "edit-profile", "change-password"],
   },
 ];
 
@@ -63,6 +63,7 @@ const NO_NAV: Screen[] = [
 function BottomNav({ tabs }: { tabs: Tab[] }) {
   const { screen, resetTo, unreadCount } = useApp();
   const insets = useSafeAreaInsets();
+  const styles = makeStyles();
   const activeIndex = tabs.findIndex((t) => t.screens.includes(screen));
 
   return (
@@ -77,7 +78,7 @@ function BottomNav({ tabs }: { tabs: Tab[] }) {
             onPress={() => resetTo(tab.screens[0])}
             style={styles.tab}
             accessibilityRole="tab"
-            accessibilityLabel={tab.label}
+            accessibilityLabel={showBadge ? `${tab.label}, unread notifications` : tab.label}
             accessibilityState={{ selected: active }}
           >
             <View>
@@ -96,7 +97,8 @@ function BottomNav({ tabs }: { tabs: Tab[] }) {
 function ToastBanner() {
   const { toast, dismissToast, openNotification } = useApp();
   const insets = useSafeAreaInsets();
-  const anim = useRef(new Animated.Value(0)).current;
+  const styles = makeStyles();
+  const [anim] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
     if (!toast) return;
@@ -150,6 +152,7 @@ function ToastBanner() {
 
 export function Shell({ children }: { children: ReactNode }) {
   const { screen, session, portal, canGoBack, goBack } = useApp();
+  const styles = makeStyles();
 
   useEffect(() => {
     const sub = BackHandler.addEventListener("hardwareBackPress", () => {
@@ -175,7 +178,8 @@ export function Shell({ children }: { children: ReactNode }) {
   );
 }
 
-const styles = StyleSheet.create({
+// Built while rendering (not StyleSheet.create at load time) so the colors follow the active theme.
+const makeStyles = () => ({
   shell: { flex: 1, backgroundColor: T.bg },
   content: { flex: 1 },
   nav: {
@@ -220,4 +224,4 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 8,
   },
-});
+} as const);

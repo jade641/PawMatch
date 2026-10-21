@@ -1,7 +1,7 @@
 import { Check, ChevronDown, Eye, FileText, MapPin, Send, Star, Stethoscope, Syringe, X } from "lucide-react-native";
 import { useRef, useState } from "react";
 import { ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
-import { capitalize, DOC_TYPES, FONT, FONT_BOLD, FONT_MEDIUM, formatAge, shadow, T } from "../constants/theme";
+import { capitalize, DOC_TYPES, FONT, FONT_BOLD, FONT_MEDIUM, formatAge, ON_PHOTO_TEXT, shadow, T } from "../constants/theme";
 import { avatarUrl } from "../services/api";
 import { BREEDS, canonicalBreed, TEMPERAMENT_OPTIONS } from "../services/compatibility";
 import type { Dog, RankedMatch } from "../types";
@@ -226,7 +226,12 @@ export function ColorCombobox({
             <X size={12} color="#fff" strokeWidth={2.5} />
           </TouchableOpacity>
         ) : (
-          <TouchableOpacity onPress={() => setIsOpen((o) => !o)} hitSlop={10}>
+          <TouchableOpacity
+            onPress={() => setIsOpen((o) => !o)}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel={isOpen ? "Close color list" : "Open color list"}
+          >
             <ChevronDown size={18} color={T.medium} strokeWidth={1.5} />
           </TouchableOpacity>
         )}
@@ -260,6 +265,8 @@ export function ColorCombobox({
                   <TouchableOpacity
                     key={option.name}
                     onPress={() => select(option)}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected }}
                     style={{
                       flexDirection: "row",
                       alignItems: "center",
@@ -289,6 +296,7 @@ export function ColorCombobox({
           onChangeText={onChange}
           placeholder="Describe the color, e.g. brindle-gray mix"
           placeholderTextColor={T.light}
+          accessibilityLabel="Describe the color"
           style={{
             borderRadius: 12,
             paddingHorizontal: 14,
@@ -400,7 +408,12 @@ export function MatchCard({
   const { dog, compatibility, reasons } = match;
   return (
     <View style={{ width, backgroundColor: T.white, borderRadius: 18, overflow: "hidden", ...shadow, elevation: 3 }}>
-      <TouchableOpacity activeOpacity={0.9} onPress={onView}>
+      <TouchableOpacity
+        activeOpacity={0.9}
+        onPress={onView}
+        accessibilityRole="button"
+        accessibilityLabel={`${dog.name}, ${compatibility.total}% match. View profile`}
+      >
         <DogImage uri={dog.img} width="100%" height={MATCH_PHOTO_HEIGHT} radius={0} />
         {/* A corner badge (not a strip) so every card shows the same, uncovered photo area. */}
         {banner ? (
@@ -436,7 +449,7 @@ export function MatchCard({
             backgroundColor: "rgba(255,255,255,0.95)",
           }}
         >
-          <Text style={{ fontSize: 12, color: T.dark, fontFamily: FONT_BOLD }}>{compatibility.total}% match</Text>
+          <Text style={{ fontSize: 12, color: ON_PHOTO_TEXT, fontFamily: FONT_BOLD }}>{compatibility.total}% match</Text>
         </View>
       </TouchableOpacity>
       <View style={{ padding: 14, gap: 9 }}>
@@ -463,6 +476,8 @@ export function MatchCard({
         <View style={{ flexDirection: "row", gap: 8, marginTop: 2 }}>
           <TouchableOpacity
             onPress={onRequest}
+            accessibilityRole="button"
+            accessibilityLabel={`Request a match with ${dog.name}`}
             style={{
               flex: 1,
               paddingVertical: 11,
@@ -479,6 +494,8 @@ export function MatchCard({
           </TouchableOpacity>
           <TouchableOpacity
             onPress={onView}
+            accessibilityRole="button"
+            accessibilityLabel={`View ${dog.name}'s profile`}
             style={{
               flex: 1,
               paddingVertical: 11,
@@ -523,6 +540,8 @@ export function MyDogSelector({
             <TouchableOpacity
               key={d.id}
               onPress={() => onSelect(d.id)}
+              accessibilityRole="button"
+              accessibilityLabel={`${label}: ${d.name}, ${d.sex}`}
               accessibilityState={{ selected: active }}
               style={{
                 flexDirection: "row",

@@ -43,6 +43,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import {
+  BRAND,
   DAVAO_DISTRICTS,
   DEFAULT_LOCATION,
   districtLocation,
@@ -192,8 +193,8 @@ export function SetupRequired() {
 const LANDING_PAGES = [
   {
     icon: Heart,
-    color: T.primary,
-    tint: T.primaryLight,
+    get color() { return T.primary; },
+    get tint() { return T.primaryLight; },
     title: "Find Your Dog's\nPerfect Match",
     description: "Smart compatibility scoring for responsible breeding in Davao City.",
     chips: [
@@ -203,8 +204,8 @@ const LANDING_PAGES = [
   },
   {
     icon: ShieldCheck,
-    color: T.success,
-    tint: T.successLight,
+    get color() { return T.success; },
+    get tint() { return T.successLight; },
     title: "Verified Health\nRecords",
     description: "Upload documents and get verified by licensed vets or certified breeders.",
     chips: [
@@ -214,8 +215,8 @@ const LANDING_PAGES = [
   },
   {
     icon: Users,
-    color: T.accent,
-    tint: T.accentLight,
+    get color() { return T.accent; },
+    get tint() { return T.accentLight; },
     title: "Meet Trusted\nDog Owners",
     description: "Check ratings, badges, and past interactions before you connect with another owner.",
     chips: [
@@ -229,7 +230,7 @@ type LandingContent = (typeof LANDING_PAGES)[number];
 
 /** Gentle up-and-down bobbing loop for the floating hero chips. */
 function useFloat(delay: number) {
-  const v = useRef(new Animated.Value(0)).current;
+  const [v] = useState(() => new Animated.Value(0));
   useEffect(() => {
     const loop = Animated.loop(
       Animated.sequence([
@@ -339,19 +340,16 @@ function LandingSlide({ content, width, index, scrollX }: {
 }
 
 export function Landing() {
-  const { navigate, markLandingSeen } = useApp();
+  const { navigate } = useApp();
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const [page, setPage] = useState(0);
-  const scrollX = useRef(new Animated.Value(0)).current;
+  const [scrollX] = useState(() => new Animated.Value(0));
   const scrollRef = useRef<ScrollView>(null);
   const last = page === LANDING_PAGES.length - 1;
   const accent = LANDING_PAGES[page].color;
 
-  const finish = () => {
-    markLandingSeen();
-    navigate("login");
-  };
+  const finish = () => navigate("login");
 
   const goTo = (i: number) => {
     scrollRef.current?.scrollTo({ x: i * width, animated: true });
@@ -389,7 +387,7 @@ export function Landing() {
         {!last && (
           <TouchableOpacity
             onPress={() => finish()}
-            style={{ paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.8)" }}
+            style={{ paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20, backgroundColor: T.white, opacity: 0.9 }}
           >
             <Text style={{ fontSize: 14, color: T.medium, fontFamily: FONT_MEDIUM }}>Skip</Text>
           </TouchableOpacity>
@@ -475,7 +473,7 @@ function AuthShell({ title, subtitle, onBack, children, footer }: {
       <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ flexGrow: 1, paddingBottom: Math.max(insets.bottom, 16) + 16 }}>
         {/* Hero header */}
         <View style={{ paddingTop: top + (onBack ? 12 : 28), paddingBottom: 72, paddingHorizontal: 24, overflow: "hidden" }}>
-          <LinearGradient colors={[T.primary, T.primaryDark]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }} />
+          <LinearGradient colors={[BRAND.orange, BRAND.orangeDeep]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }} />
           <View style={{ position: "absolute", width: 220, height: 220, borderRadius: 110, backgroundColor: "rgba(255,255,255,0.08)", top: -70, right: -60 }} />
           <View style={{ position: "absolute", width: 140, height: 140, borderRadius: 70, backgroundColor: "rgba(255,255,255,0.07)", bottom: -40, left: -40 }} />
           <PawPrint size={26} color="#fff" style={{ position: "absolute", top: top + 40, right: 34, opacity: 0.25, transform: [{ rotate: "20deg" }] }} />
@@ -587,7 +585,7 @@ function AuthField({ icon: Icon, label, error, hint, secure, ...input }: {
           borderRadius: 14,
           borderWidth: 1.5,
           borderColor: error ? T.error : active ? T.primary : T.border,
-          backgroundColor: active ? T.white : "#FAFAF9",
+          backgroundColor: active ? T.white : T.inputBg,
         }}
       >
         <Icon size={20} color={error ? T.error : active ? T.primary : T.medium} strokeWidth={2} />

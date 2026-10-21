@@ -94,13 +94,14 @@ await step("users: can only read own row", async () => {
   assert.deepEqual(rows.map((r) => r.id), [A]);
 });
 
-let maxId, bellaId, lunaId, rexId;
+let maxId, bellaId, rexId;
 await step("dogs: owner inserts own dog", async () => {
   [{ id: maxId }] = await as(A, `insert into public.dogs (name, breed, age, sex, size, color, temperament)
     values ('Max','Labrador Retriever',2,'male','large','Yellow','{Friendly}') returning id, owner_id`);
   [{ id: bellaId }] = await as(B, `insert into public.dogs (name, breed, age, sex, size, color, temperament)
     values ('Bella','Labrador Retriever',1,'female','large','Black','{Friendly,Calm}') returning id`);
-  [{ id: lunaId }] = await as(B, `insert into public.dogs (name, breed, age, sex, size, temperament)
+  // Luna only needs to exist (a second female candidate); her id isn't used later.
+  await as(B, `insert into public.dogs (name, breed, age, sex, size, temperament)
     values ('Luna','Shih Tzu',3,'female','small','{Playful}') returning id`);
   [{ id: rexId }] = await as(B, `insert into public.dogs (name, breed, age, sex, size, temperament)
     values ('Rex','Beagle',3,'male','medium','{Calm}') returning id`);

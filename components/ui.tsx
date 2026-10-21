@@ -1,5 +1,5 @@
 import { StatusBar } from "expo-status-bar";
-import { AlertCircle, ArrowLeft, Eye, EyeOff, PawPrint, Star } from "lucide-react-native";
+import { AlertCircle, ArrowLeft, Eye, EyeOff, Moon, PawPrint, Star, Sun } from "lucide-react-native";
 import { type ComponentType, type ReactNode, useState } from "react";
 import {
   ActivityIndicator,
@@ -8,6 +8,7 @@ import {
   Platform,
   Pressable,
   type StyleProp,
+  Switch,
   Text,
   TextInput,
   type TextInputProps,
@@ -17,7 +18,8 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
-import { FONT, FONT_BOLD, FONT_MEDIUM, initials, shadow, T, type Tone } from "../constants/theme";
+import { BRAND, FONT, FONT_BOLD, FONT_MEDIUM, initials, shadow, T, type Tone } from "../constants/theme";
+import { useThemePreference } from "../contexts/ThemeContext";
 
 type IconType = ComponentType<{ size?: number; color?: string; strokeWidth?: number; fill?: string }>;
 
@@ -57,6 +59,7 @@ export function HeroHeader({
   subtitle,
   eyebrow,
   onBack,
+  leading,
   right,
   overlap = 0,
   children,
@@ -65,6 +68,8 @@ export function HeroHeader({
   subtitle?: string;
   eyebrow?: string;
   onBack?: () => void;
+  /** Rendered before the title when there is no back button, e.g. the brand logo. */
+  leading?: ReactNode;
   right?: ReactNode;
   overlap?: number;
   children?: ReactNode;
@@ -85,7 +90,7 @@ export function HeroHeader({
       {/* A native view pinned to all four edges resizes with the header. The previous <Svg
           width/height="100%"> didn't track the header's size on Android, leaving it half-painted. */}
       <LinearGradient
-        colors={[T.primary, T.primaryDark]}
+        colors={[BRAND.orange, BRAND.orangeDeep]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}
@@ -106,6 +111,7 @@ export function HeroHeader({
             <ArrowLeft size={20} color="#fff" strokeWidth={2.5} />
           </TouchableOpacity>
         )}
+        {!onBack && leading}
         <View style={{ flex: 1 }}>
           {eyebrow ? (
             <Text style={{ fontSize: 12, color: "rgba(255,255,255,0.85)", fontFamily: FONT_BOLD, letterSpacing: 0.8, textTransform: "uppercase" }}>
@@ -134,7 +140,7 @@ export function HeroIconButton({ icon: Icon, label, onPress, badge }: { icon: Ic
     <TouchableOpacity
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={label}
+      accessibilityLabel={badge ? `${label}, new activity` : label}
       hitSlop={6}
       style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.2)", alignItems: "center", justifyContent: "center" }}
     >
@@ -226,15 +232,23 @@ export function Card({
   children,
   style,
   onPress,
+  accessibilityLabel,
 }: {
   children: ReactNode;
   style?: StyleProp<ViewStyle>;
   onPress?: () => void;
+  accessibilityLabel?: string;
 }) {
   const base: ViewStyle = { backgroundColor: T.white, borderRadius: 16, padding: 16, ...shadow };
   if (onPress) {
     return (
-      <TouchableOpacity activeOpacity={0.8} onPress={onPress} style={[base, style]}>
+      <TouchableOpacity
+        activeOpacity={0.8}
+        onPress={onPress}
+        accessibilityRole="button"
+        accessibilityLabel={accessibilityLabel}
+        style={[base, style]}
+      >
         {children}
       </TouchableOpacity>
     );
@@ -251,6 +265,32 @@ export function SectionTitle({ title, icon: Icon, right }: { title: string; icon
       </View>
       {right}
     </View>
+  );
+}
+
+/** Inline navigation link, e.g. "See all →". */
+export function TextLink({ label, onPress, style }: { label: string; onPress: () => void; style?: StyleProp<ViewStyle> }) {
+  return (
+    <TouchableOpacity onPress={onPress} accessibilityRole="link" accessibilityLabel={label} hitSlop={8} style={style}>
+      {/* primaryDark: the brand orange is too light for small text (WCAG AA). */}
+      <Text style={{ fontSize: 13, color: T.primaryDark, fontFamily: FONT_BOLD }}>{label} →</Text>
+    </TouchableOpacity>
+  );
+}
+
+/** Small pill action for the right side of a Header, e.g. "Reset". */
+export function HeaderAction({ icon: Icon, label, onPress }: { icon?: IconType; label: string; onPress: () => void }) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      hitSlop={6}
+      style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, backgroundColor: T.primaryLight }}
+    >
+      {Icon && <Icon size={14} color={T.primaryDark} strokeWidth={2} />}
+      <Text style={{ fontSize: 12, color: T.primaryDark, fontFamily: FONT_BOLD }}>{label}</Text>
+    </TouchableOpacity>
   );
 }
 
@@ -279,6 +319,57 @@ export function InfoRow({ label, value, last }: { label: string; value: ReactNod
   );
 }
 
+/** White card with an icon badge, a title and an optional subtitle above its content. */
+export function SectionCard({ icon: Icon, title, subtitle, children }: {
+  icon: IconType;
+  title: string;
+  subtitle?: string;
+  children: ReactNode;
+}) {
+  return (
+    <View style={{ backgroundColor: T.white, borderRadius: 22, padding: 18, ...shadow }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 16 }}>
+        <View style={{ width: 34, height: 34, borderRadius: 11, backgroundColor: T.primaryLight, alignItems: "center", justifyContent: "center" }}>
+          <Icon size={17} color={T.primary} strokeWidth={2.25} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: 16, color: T.dark, fontFamily: FONT_BOLD }}>{title}</Text>
+          {subtitle ? <Text style={{ fontSize: 12, color: T.medium, fontFamily: FONT, marginTop: 1 }}>{subtitle}</Text> : null}
+        </View>
+      </View>
+      {children}
+    </View>
+  );
+}
+
+/** Row of equal-width segment tabs; the selected one is filled with the brand color. */
+export function SegmentedTabs<K extends string>({ tabs, value, onChange, style }: {
+  tabs: { id: K; label: string; icon?: IconType }[];
+  value: K;
+  onChange: (id: K) => void;
+  style?: StyleProp<ViewStyle>;
+}) {
+  return (
+    <View style={[{ flexDirection: "row", margin: 20, borderRadius: 12, overflow: "hidden", borderWidth: 1, borderColor: T.border }, style]}>
+      {tabs.map(({ id, label, icon: Icon }) => {
+        const active = value === id;
+        return (
+          <TouchableOpacity
+            key={id}
+            onPress={() => onChange(id)}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: active }}
+            style={{ flex: 1, paddingVertical: 10, backgroundColor: active ? T.primary : T.white, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 6 }}
+          >
+            {Icon && <Icon size={14} color={active ? "#fff" : T.medium} strokeWidth={1.6} />}
+            <Text style={{ fontSize: 12, color: active ? "#fff" : T.medium, fontFamily: FONT_BOLD }}>{label}</Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+}
+
 /* ── Controls ───────────────────────────────────────────────────── */
 type BtnVariant = "primary" | "secondary" | "outline" | "ghost" | "danger";
 
@@ -291,11 +382,14 @@ export function Btn({
   loading,
   icon: Icon,
   style,
+  accessibilityLabel,
 }: {
   title: string;
   onPress: () => void;
+  /** Defaults to `title`; set it when the visible title is ambiguous out of context. */
+  accessibilityLabel?: string;
   variant?: BtnVariant;
-  size?: "small" | "medium" | "large";
+  size?: "small" | "medium" | "large" | "hero";
   disabled?: boolean;
   loading?: boolean;
   icon?: IconType;
@@ -309,29 +403,31 @@ export function Btn({
     danger: { bg: T.white, border: T.error, fg: T.error },
   };
   const c = palette[variant];
-  const height = size === "small" ? 38 : size === "large" ? 54 : 48;
+  const hero = size === "hero";
+  const height = size === "small" ? 38 : size === "large" ? 54 : hero ? 56 : 48;
   const inactive = disabled || loading;
   return (
     <TouchableOpacity
       onPress={onPress}
       disabled={inactive}
       accessibilityRole="button"
-      accessibilityLabel={title}
+      accessibilityLabel={accessibilityLabel ?? title}
       accessibilityState={{ disabled: !!inactive, busy: !!loading }}
       style={[
         {
           minHeight: height,
           paddingHorizontal: size === "small" ? 14 : 20,
-          borderRadius: 12,
+          borderRadius: hero ? 16 : 12,
           borderWidth: 1.5,
           backgroundColor: c.bg,
           borderColor: c.border,
           alignItems: "center",
           justifyContent: "center",
           flexDirection: "row",
-          gap: 8,
-          opacity: disabled ? 0.5 : 1,
+          gap: hero ? 10 : 8,
+          opacity: disabled ? 0.5 : loading && hero ? 0.8 : 1,
         },
+        hero && { shadowColor: c.bg, shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.3, shadowRadius: 18, elevation: 6 },
         style,
       ]}
     >
@@ -339,8 +435,8 @@ export function Btn({
         <ActivityIndicator color={c.fg} />
       ) : (
         <>
-          {Icon && <Icon size={size === "small" ? 15 : 18} color={c.fg} strokeWidth={2} />}
-          <Text style={{ color: c.fg, fontSize: size === "small" ? 13 : 15, fontFamily: FONT_BOLD }}>{title}</Text>
+          {Icon && <Icon size={size === "small" ? 15 : hero ? 20 : 18} color={c.fg} strokeWidth={hero ? 2.5 : 2} />}
+          <Text style={{ color: c.fg, fontSize: size === "small" ? 13 : hero ? 17 : 15, fontFamily: FONT_BOLD }}>{title}</Text>
         </>
       )}
     </TouchableOpacity>
@@ -381,7 +477,7 @@ export function Field({
       >
         <TextInput
           {...input}
-          accessibilityLabel={label ?? input.placeholder}
+          accessibilityLabel={input.accessibilityLabel ?? label ?? input.placeholder}
           placeholderTextColor={T.light}
           secureTextEntry={secure && hidden}
           multiline={multiline}
@@ -467,6 +563,52 @@ export function Tag({ label, tone = "neutral" }: { label: string; tone?: Tone | 
     <View style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, backgroundColor: bg, alignSelf: "flex-start" }}>
       <Text style={{ fontSize: 12, color: fg, fontFamily: FONT_MEDIUM }}>{label}</Text>
     </View>
+  );
+}
+
+/* ── Appearance ─────────────────────────────────────────────────── */
+/** "Dark Mode" row with an on / off switch for Settings screens. */
+export function DarkModeToggle() {
+  const { preference, scheme, setPreference } = useThemePreference();
+  const on = scheme === "dark";
+  const toggle = () => setPreference(on ? "light" : "dark");
+  const Icon = on ? Moon : Sun;
+  return (
+    <Pressable
+      onPress={toggle}
+      accessibilityRole="switch"
+      accessibilityLabel="Dark mode"
+      accessibilityState={{ checked: on }}
+      style={{ flexDirection: "row", alignItems: "center", gap: 12 }}
+    >
+      <View
+        style={{
+          width: 40,
+          height: 40,
+          borderRadius: 12,
+          backgroundColor: on ? T.accentLight : T.secondaryLight,
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <Icon size={20} color={on ? T.accent : T.secondaryDark} strokeWidth={2} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={{ fontSize: 14, color: T.dark, fontFamily: FONT_MEDIUM }}>Dark Mode</Text>
+        <Text style={{ fontSize: 12, color: T.medium, fontFamily: FONT, marginTop: 2 }}>
+          {preference === "system" ? `${on ? "On" : "Off"} • following your phone` : on ? "On" : "Off"}
+        </Text>
+      </View>
+      <Switch
+        value={on}
+        onValueChange={toggle}
+        trackColor={{ true: T.primary, false: T.light }}
+        thumbColor="#fff"
+        ios_backgroundColor={T.light}
+        accessibilityElementsHidden
+        importantForAccessibility="no"
+      />
+    </Pressable>
   );
 }
 
@@ -676,6 +818,7 @@ export function ListItem({
       onPress={onPress}
       disabled={!onPress}
       accessibilityRole={onPress ? "button" : undefined}
+      accessibilityLabel={subtitle ? `${title}, ${subtitle}` : title}
       style={({ pressed }) => ({
         flexDirection: "row",
         alignItems: "center",

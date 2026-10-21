@@ -1,7 +1,15 @@
-import type { ApplicationStatus, DocType, RequestStatus, SubmissionStatus } from "../types";
+import type { ApplicationStatus, DocType, RequestStatus, Sex, Submission, SubmissionStatus } from "../types";
 
 /* ── Design tokens ─────────────────────────────────────────────── */
-export const T = {
+export type ColorScheme = "light" | "dark";
+
+/** Fixed brand colors for the orange hero gradient; they look the same in both themes. */
+export const BRAND = { orange: "#FF7043", orangeDeep: "#D84315" } as const;
+
+/** Text on a white chip over a photo, which stays white in both themes. */
+export const ON_PHOTO_TEXT = "#2C2C2A";
+
+const LIGHT = {
   primary: "#FF7043",
   primaryLight: "#FFE8E3",
   primaryDark: "#D84315",
@@ -28,7 +36,65 @@ export const T = {
   white: "#FFFFFF",
   border: "#E6E4DF",
   star: "#F59E0B",
+
+  /** Dark promo / feature cards with white text. */
+  ink: "#2C2C2A",
+  /** Resting background of form inputs. */
+  inputBg: "#FAFAF9",
+  /** Unread rows, e.g. new notifications. */
+  highlight: "#FFF8F5",
 };
+
+type Palette = typeof LIGHT;
+
+/**
+ * Dark theme. Token names keep their light-theme meaning: `white` is the card / surface color,
+ * `dark` the main text color, `bg` the screen background, and `*Light` the soft tint behind
+ * `*Dark` / accent text.
+ */
+const DARK: Palette = {
+  primary: "#FF7A50",
+  primaryLight: "#3A241C",
+  primaryDark: "#FFAB91",
+
+  secondary: "#FFB84D",
+  secondaryLight: "#3A2E1A",
+  secondaryDark: "#E69500",
+
+  accent: "#5C9DEB",
+  accentLight: "#1C2A3A",
+  accentDark: "#9CC3F2",
+
+  success: "#4CC38A",
+  successLight: "#16301F",
+  warning: "#F0A94B",
+  warningLight: "#3A2C14",
+  error: "#FF6B5E",
+  errorLight: "#3A1C1A",
+
+  dark: "#F2F1EE",
+  medium: "#A9A7A0",
+  light: "#5E5C57",
+  bg: "#121212",
+  white: "#1E1E1E",
+  border: "#2E2D2A",
+  star: "#F59E0B",
+
+  ink: "#2A2622",
+  inputBg: "#242424",
+  highlight: "#2A1F1A",
+};
+
+/**
+ * Active palette. Components read it while rendering, so switching themes swaps its values
+ * (applyColorScheme) and remounts the screens (see contexts/ThemeContext.tsx).
+ */
+export const T: Palette & { scheme: ColorScheme } = { ...LIGHT, scheme: "light" };
+
+export function applyColorScheme(scheme: ColorScheme) {
+  if (T.scheme === scheme) return;
+  Object.assign(T, scheme === "dark" ? DARK : LIGHT, { scheme });
+}
 
 export const FONT = "Roboto_400Regular";
 export const FONT_MEDIUM = "Roboto_500Medium";
@@ -115,6 +181,18 @@ export const REQUEST_STATUS: Record<RequestStatus, { label: string; tone: Tone }
 };
 
 /* ── Formatting ────────────────────────────────────────────────── */
+/** Newest submission per document type, except that a verified one always wins. Input is newest-first. */
+export function latestByType(submissions: Submission[]) {
+  const map = new Map<DocType, Submission>();
+  for (const s of submissions) {
+    const current = map.get(s.submission_type);
+    if (!current || (current.status !== "vet_verified" && s.status === "vet_verified")) {
+      map.set(s.submission_type, s);
+    }
+  }
+  return map;
+}
+
 export function formatDate(iso: string | null | undefined, opts: Intl.DateTimeFormatOptions = {}) {
   if (!iso) return "";
   return new Date(iso).toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric", ...opts });
@@ -142,6 +220,11 @@ export function formatAge(age: number) {
     return `${months} mo${months === 1 ? "" : "s"}`;
   }
   return `${Number.isInteger(age) ? age : age.toFixed(1)} yr${age === 1 ? "" : "s"}`;
+}
+
+/** Breeding partners must be of the opposite sex. */
+export function oppositeSex(sex: Sex): Sex {
+  return sex === "male" ? "female" : "male";
 }
 
 export function capitalize(value: string) {

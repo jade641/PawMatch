@@ -30,7 +30,6 @@ export interface Toast {
 
 /** Screens a signed-in user is moved away from automatically after sign-in. */
 const SIGNED_OUT_SCREENS: Screen[] = ["boot", "setup-required", "landing", "login", "register", "forgot-password", "verify-email"];
-const LANDING_SEEN_KEY = "pawmatch.landingSeen";
 const PORTAL_KEY = "pawmatch.portal";
 
 /** Which side of the app an account with both an owner and a vet / breeder profile is using. */
@@ -58,7 +57,6 @@ interface AppContextValue {
   retryBoot: () => void;
   refreshSession: () => Promise<Session | null>;
   signOut: () => Promise<void>;
-  markLandingSeen: () => void;
 
   portal: Portal;
   /** Switches between the owner and vet sides and opens that side's home screen. */
@@ -85,7 +83,9 @@ interface AppContextValue {
 const AppContext = createContext<AppContextValue | null>(null);
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [stack, setStack] = useState<Route[]>([{ screen: "boot", params: {} }]);
+  const [stack, setStack] = useState<Route[]>([
+    { screen: isSupabaseConfigured ? "boot" : "setup-required", params: {} },
+  ]);
   const [session, setSession] = useState<Session | null>(null);
   const [bootError, setBootError] = useState<string | null>(null);
   const [myDogs, setMyDogs] = useState<Dog[]>([]);
@@ -169,31 +169,46 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setLastNotification(null);
   }, []);
 
-  const boot = useCallback(async () => {
+  /** Applies the saved portal, restores the session and opens the right first screen. */
+  const restoreSession = useCallback(
+    async (savedPortal: string | null) => {
+      try {
+        if (savedPortal === "vet" || savedPortal === "owner") choosePortal(savedPortal);
+        const s = await loadSession();
+        if (s) {
+          resetTo(homeScreenFor(s, portalRef.current));
+        } else {
+          // Always open on the landing carousel when signed out.
+          resetTo("landing");
+        }
+      } catch (e) {
+        setBootError(api.errorMessage(e));
+      }
+    },
+    [loadSession, resetTo, choosePortal],
+  );
+
+  const startBoot = useCallback(() => {
+    AsyncStorage.getItem(PORTAL_KEY)
+      .catch(() => null)
+      .then(restoreSession);
+  }, [restoreSession]);
+
+  /** "Try again" on the boot screen. */
+  const boot = useCallback(() => {
     if (!isSupabaseConfigured) {
       resetTo("setup-required");
       return;
     }
     setBootError(null);
     resetTo("boot");
-    try {
-      const saved = await AsyncStorage.getItem(PORTAL_KEY).catch(() => null);
-      if (saved === "vet" || saved === "owner") choosePortal(saved);
-      const s = await loadSession();
-      if (s) {
-        resetTo(homeScreenFor(s, portalRef.current));
-      } else {
-        // Always open on the landing carousel when signed out.
-        resetTo("landing");
-      }
-    } catch (e) {
-      setBootError(api.errorMessage(e));
-    }
-  }, [loadSession, resetTo, choosePortal]);
+    startBoot();
+  }, [resetTo, startBoot]);
 
   useEffect(() => {
-    boot();
+    // The initial stack already shows "boot" (or "setup-required"), so only the async part runs here.
     if (!isSupabaseConfigured) return;
+    startBoot();
 
     const { data } = supabase.auth.onAuthStateChange((event, authSession) => {
       if (event === "SIGNED_IN") {
@@ -214,7 +229,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
     });
     return () => data.subscription.unsubscribe();
-  }, [boot, loadSession, resetTo, showToast, clearSignedInState]);
+  }, [startBoot, loadSession, resetTo, showToast, clearSignedInState]);
 
   const refreshSession = useCallback(async () => {
     try {
@@ -234,10 +249,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     clearSignedInState();
     resetTo("login");
   }, [clearSignedInState, resetTo]);
-
-  const markLandingSeen = useCallback(() => {
-    AsyncStorage.setItem(LANDING_SEEN_KEY, "1").catch(() => undefined);
-  }, []);
 
   const switchPortal = useCallback(
     (p: Portal) => {
@@ -259,15 +270,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const userId = session?.user.id;
   useEffect(() => {
     if (!userId) return;
-    reloadNotifications();
-    return api.subscribeToNotifications(userId, (n) => {
+    let active = true;
+    // A slow first load must not overwrite the list after sign-out or an account switch.
+    api
+      .listNotifications()
+      .then((list) => active && setNotifications(list))
+      .catch(() => undefined);
+    const unsubscribe = api.subscribeToNotifications(userId, (n) => {
       setNotifications((list) => [n, ...list.filter((x) => x.id !== n.id)]);
       setLastNotification(n);
       setToast({ id: Date.now(), title: n.title, message: n.body, tone: "info", notification: n });
       if (n.type === "verification_result") reloadDogs().catch(() => undefined);
       if (n.type === "verifier_review") loadSession().catch(() => undefined);
     });
-  }, [userId, reloadNotifications, reloadDogs, loadSession]);
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, [userId, reloadDogs, loadSession]);
 
   const markAllRead = useCallback(async () => {
     setNotifications((list) => list.map((n) => ({ ...n, read: true })));
@@ -334,7 +354,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     retryBoot: boot,
     refreshSession,
     signOut,
-    markLandingSeen,
     portal,
     switchPortal,
     myDogs,

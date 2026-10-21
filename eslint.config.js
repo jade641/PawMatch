@@ -4,8 +4,9 @@ const expoConfig = require("eslint-config-expo/flat");
 
 module.exports = defineConfig([
   expoConfig,
+  // On its own so it ignores these folders globally (build output and Expo's generated files).
+  { ignores: ["dist/**", ".expo/**"] },
   {
-    ignores: ["dist/*"],
     rules: {
       "react/no-unescaped-entities": "off",
     },

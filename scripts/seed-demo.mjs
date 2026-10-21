@@ -12,6 +12,7 @@
 //   npm run verifier:list                          list verifier accounts awaiting approval
 //   npm run admin:grant -- you@example.com         let an account review verifiers in the app
 //   npm run admin:revoke -- you@example.com        remove admin rights
+import { Buffer } from "node:buffer";
 import { createClient } from "@supabase/supabase-js";
 
 const url = process.env.SUPABASE_URL ?? process.env.EXPO_PUBLIC_SUPABASE_URL;

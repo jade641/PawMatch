@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
+  RefreshControl,
   ScrollView,
   Text,
   TextInput,
@@ -15,9 +16,23 @@ import { useApp, useSession } from "../contexts/AppContext";
 import { useAsync } from "../hooks/useAsync";
 import * as api from "../services/api";
 import type { MatchRequest, Message } from "../types";
-import { Btn, Card, confirmAction, DogImage, EmptyState, ErrorView, Header, Loading, showMessage, Tag } from "./ui";
+import {
+  Btn,
+  Card,
+  confirmAction,
+  DogImage,
+  EmptyState,
+  ErrorView,
+  Field,
+  Header,
+  HeaderAction,
+  Loading,
+  SegmentedTabs,
+  showMessage,
+  Tag,
+} from "./ui";
 
-function otherSide(request: MatchRequest, me: string) {
+export function otherSide(request: MatchRequest, me: string) {
   const iAmRequester = request.requester_user_id === me;
   return {
     iAmRequester,
@@ -33,6 +48,12 @@ export function RequestsScreen() {
   const session = useSession();
   const [tab, setTab] = useState<"received" | "sent">("received");
   const requests = useAsync(() => api.listMyRequests(), [lastNotification?.id]);
+  const [refreshing, setRefreshing] = useState(false);
+  const refresh = async () => {
+    setRefreshing(true);
+    await requests.reload(true);
+    setRefreshing(false);
+  };
 
   const list = (requests.data ?? []).filter((r) =>
     tab === "received" ? r.recipient_user_id === session.user.id : r.requester_user_id === session.user.id,
@@ -41,20 +62,19 @@ export function RequestsScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: T.bg }}>
       <Header title="Requests & Messages" icon={MessageCircle} onBack={canGoBack ? goBack : undefined} />
-      <View style={{ flexDirection: "row", margin: 20, marginBottom: 8, borderRadius: 12, overflow: "hidden", borderWidth: 1, borderColor: T.border }}>
-        {(["received", "sent"] as const).map((t) => (
-          <TouchableOpacity
-            key={t}
-            onPress={() => setTab(t)}
-            style={{ flex: 1, paddingVertical: 10, alignItems: "center", backgroundColor: tab === t ? T.primary : T.white }}
-          >
-            <Text style={{ fontFamily: FONT_BOLD, fontSize: 13, color: tab === t ? "#fff" : T.medium }}>
-              {t === "received" ? "Received" : "Sent"}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-      <ScrollView contentContainerStyle={{ padding: 20, gap: 12, paddingBottom: 32 }}>
+      <SegmentedTabs
+        tabs={[
+          { id: "received", label: "Received" },
+          { id: "sent", label: "Sent" },
+        ]}
+        value={tab}
+        onChange={setTab}
+        style={{ marginBottom: 8 }}
+      />
+      <ScrollView
+        contentContainerStyle={{ padding: 20, gap: 12, paddingBottom: 32 }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={T.primary} />}
+      >
         {requests.loading ? (
           <Loading />
         ) : requests.error ? (
@@ -76,7 +96,12 @@ export function RequestsScreen() {
             const { otherDog, myDog, otherName } = otherSide(r, session.user.id);
             const status = REQUEST_STATUS[r.status];
             return (
-              <Card key={r.id} onPress={() => navigate("conversation", { requestId: r.id })} style={{ flexDirection: "row", gap: 12 }}>
+              <Card
+                key={r.id}
+                onPress={() => navigate("conversation", { requestId: r.id })}
+                accessibilityLabel={`${otherDog?.name ?? "Deleted dog"} and ${myDog?.name ?? "your dog"}, ${status.label}, from ${otherName}`}
+                style={{ flexDirection: "row", gap: 12 }}
+              >
                 <DogImage uri={otherDog?.img} width={56} height={56} />
                 <View style={{ flex: 1, gap: 3 }}>
                   <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
@@ -88,7 +113,7 @@ export function RequestsScreen() {
                   <Text style={{ fontSize: 12, color: T.medium, fontFamily: FONT }} numberOfLines={1}>
                     {otherName} • {otherDog?.breed ?? ""}
                   </Text>
-                  <Text style={{ fontSize: 11, color: T.light, fontFamily: FONT }}>
+                  <Text style={{ fontSize: 11, color: T.medium, fontFamily: FONT }}>
                     {r.compatibility_score != null ? `${r.compatibility_score}% compatible • ` : ""}
                     {timeAgo(r.updated_at)}
                   </Text>
@@ -161,30 +186,26 @@ function ReviewForm({ request, otherName, onDone }: { request: MatchRequest; oth
       <Text style={{ fontSize: 14, color: T.dark, fontFamily: FONT_BOLD }}>Rate your experience with {otherName}</Text>
       <View style={{ flexDirection: "row", gap: 6 }}>
         {[1, 2, 3, 4, 5].map((i) => (
-          <TouchableOpacity key={i} onPress={() => setRating(i)} accessibilityRole="button" accessibilityLabel={`${i} star${i > 1 ? "s" : ""}`} hitSlop={4}>
+          <TouchableOpacity
+            key={i}
+            onPress={() => setRating(i)}
+            accessibilityRole="button"
+            accessibilityLabel={`${i} star${i > 1 ? "s" : ""}`}
+            accessibilityState={{ selected: i === rating }}
+            hitSlop={4}
+          >
             <Star size={30} color={i <= rating ? T.star : T.light} fill={i <= rating ? T.star : "transparent"} strokeWidth={1.5} />
           </TouchableOpacity>
         ))}
       </View>
-      <TextInput
+      <Field
         value={comment}
         onChangeText={setComment}
+        accessibilityLabel="Review comment"
         placeholder="How was communication, honesty of records, the dog's health…"
-        placeholderTextColor={T.light}
         multiline
         maxLength={1000}
-        style={{
-          minHeight: 80,
-          borderRadius: 12,
-          borderWidth: 1,
-          borderColor: T.border,
-          backgroundColor: T.bg,
-          padding: 12,
-          fontSize: 14,
-          color: T.dark,
-          fontFamily: FONT,
-          textAlignVertical: "top",
-        }}
+        style={{ marginBottom: 0 }}
       />
       <Btn title="Post Review" loading={saving} onPress={submit} />
     </Card>
@@ -192,7 +213,7 @@ function ReviewForm({ request, otherName, onDone }: { request: MatchRequest; oth
 }
 
 export function ConversationScreen() {
-  const { navigate, goBack, params, lastNotification } = useApp();
+  const { navigate, goBack, params, lastNotification, showToast } = useApp();
   const session = useSession();
   const insets = useSafeAreaInsets();
   const requestId = Number(params.requestId);
@@ -268,6 +289,8 @@ export function ConversationScreen() {
     try {
       await api.respondToRequest(r.id, action);
       await request.reload(true);
+      const done = { accept: "Request accepted", decline: "Request declined", cancel: "Request cancelled", complete: "Marked as completed" };
+      showToast(done[action], `${otherName} has been notified.`, "success");
     } catch (e) {
       showMessage("Couldn't update request", api.errorMessage(e));
     } finally {
@@ -283,13 +306,7 @@ export function ConversationScreen() {
         onBack={goBack}
         right={
           otherDog ? (
-            <TouchableOpacity
-              onPress={() => navigate("match-profile", { dogId: otherDog.id })}
-              style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, backgroundColor: T.primaryLight }}
-            >
-              <PawPrint size={14} color={T.primaryDark} strokeWidth={2} />
-              <Text style={{ fontSize: 12, color: T.primaryDark, fontFamily: FONT_BOLD }}>Profile</Text>
-            </TouchableOpacity>
+            <HeaderAction icon={PawPrint} label="Profile" onPress={() => navigate("match-profile", { dogId: otherDog.id })} />
           ) : undefined
         }
       />
@@ -351,7 +368,7 @@ export function ConversationScreen() {
               <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
                 <Text style={{ flex: 1, fontSize: 12, color: T.medium, fontFamily: FONT }}>Waiting for {otherName} to respond.</Text>
                 <Btn
-                  title="Cancel"
+                  title="Cancel request"
                   size="small"
                   variant="danger"
                   disabled={acting}
@@ -397,6 +414,7 @@ export function ConversationScreen() {
                 onChangeText={setDraft}
                 placeholder={`Message ${otherName}…`}
                 placeholderTextColor={T.light}
+                accessibilityLabel={`Message ${otherName}`}
                 multiline
                 maxLength={2000}
                 style={{
@@ -418,7 +436,9 @@ export function ConversationScreen() {
               <TouchableOpacity
                 onPress={send}
                 disabled={sending || !draft.trim()}
-                accessibilityRole="button" accessibilityLabel="Send message"
+                accessibilityRole="button"
+                accessibilityLabel="Send message"
+                accessibilityState={{ disabled: sending || !draft.trim(), busy: sending }}
                 style={{
                   width: 44,
                   height: 44,
