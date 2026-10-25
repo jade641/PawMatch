@@ -227,7 +227,8 @@ await step("verification: owner submits, verifier alerted, audit logged", async 
   assert.equal(s.owner_id, A);
   assert.equal(s.verifier_name, "Dr. Patricia Reyes");
   assert.equal(s.status, "owner_submitted");
-  const notes = await as(V, "select type from public.notifications");
+  // V signed up without a location, so it also has a "Complete your profile" reminder.
+  const notes = await as(V, "select type from public.notifications where type <> 'system'");
   assert.deepEqual(notes.map((n) => n.type), ["verification_request"]);
   const audit = await as(C, "select action from public.audit_logs where dog_id=$1", [maxId]);
   assert.deepEqual(audit.map((a) => a.action), ["submitted"]);
@@ -396,6 +397,31 @@ await step("profile: update_my_profile syncs owners", async () => {
   assert.equal(o.display_name, "Juan D. Cruz");
   assert.equal(o.location, "Buhangin, Davao City");
   await asFails(A, "update public.owners set rating = 5 where user_id=$1", [A], /permission denied/);
+});
+
+await step("profile: sign-ups without a location (Google) start incomplete until saved", async () => {
+  const completed = async (uid) => (await su("select profile_completed from public.users where id=$1", [uid]))[0].profile_completed;
+  assert.equal(await completed(A), true);
+  assert.equal(await completed(C), false);
+  await asFails(C, "update public.users set profile_completed = true where id=$1", [C], /permission denied/);
+  const reminder = async () => (await su("select read from public.notifications where user_id=$1 and data->>'kind' = 'complete_profile'", [C]));
+  assert.deepEqual(await reminder(), [{ read: false }]);
+  assert.equal((await su("select id from public.notifications where user_id=$1 and data->>'kind' = 'complete_profile'", [A])).length, 0);
+  await as(C, "select public.update_my_profile('Out Sider', '', '')");
+  assert.equal(await completed(C), false);
+  await as(C, "select public.update_my_profile('Out Sider', '', 'Toril, Davao City')");
+  assert.equal(await completed(C), true);
+  assert.deepEqual(await reminder(), [{ read: true }]);
+  const notes = await su("select title, data from public.notifications where user_id=$1 and data->>'kind' = 'profile_completed'", [C]);
+  assert.equal(notes.length, 1);
+  assert.equal(notes[0].data.silent, true);
+  await as(C, "select public.update_my_profile('Out Sider', '0917', 'Toril, Davao City')");
+  assert.equal((await su("select id from public.notifications where user_id=$1 and data->>'kind' = 'profile_completed'", [C])).length, 1);
+  assert.equal((await su("select location from public.owners where user_id=$1", [C]))[0].location, "Toril, Davao City");
+  const moved = async () => (await su("select id from public.notifications where user_id=$1 and data->>'kind' = 'location_updated'", [C])).length;
+  assert.equal(await moved(), 0);
+  await as(C, "select public.update_my_profile('Out Sider', '0917', 'Buhangin, Davao City')");
+  assert.equal(await moved(), 1);
 });
 
 await step("profile: set_my_avatar syncs owners/verifiers and checks the upload", async () => {

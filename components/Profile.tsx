@@ -52,7 +52,7 @@ import {
   T,
   TIER_DESCRIPTIONS,
 } from "../constants/theme";
-import { useApp, useSession } from "../contexts/AppContext";
+import { useApp, useLocationGate, useSession } from "../contexts/AppContext";
 import { useAsync } from "../hooks/useAsync";
 import * as api from "../services/api";
 import { computeCompatibility, explainCompatibility } from "../services/compatibility";
@@ -711,7 +711,8 @@ function SegmentButton({ label, active, onPress, icon, stacked }: {
 }
 
 export function AddDog() {
-  return <DogForm />;
+  const needsLocation = useLocationGate();
+  return needsLocation ? <Loading /> : <DogForm />;
 }
 
 export function EditDog() {
@@ -1151,6 +1152,11 @@ function ScreenShell({ title, onBack, children }: { title: string; onBack: () =>
 
 /* ── Send breeding request ──────────────────────────────────────── */
 export function SendRequest() {
+  const needsLocation = useLocationGate();
+  return needsLocation ? <Loading /> : <SendRequestForm />;
+}
+
+function SendRequestForm() {
   const { goBack, replace, params, myDogs, activeDog, setActiveDogId, showToast, navigate } = useApp();
   const dogId: string = params.dogId;
   const target = useAsync(() => api.getDog(dogId), [dogId]);

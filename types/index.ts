@@ -18,6 +18,8 @@ export interface UserProfile {
   avatar_url: string | null;
   location: string;
   role: Role;
+  /** False until the user picks a location (Google sign-ups skip the sign-up form). */
+  profile_completed: boolean;
   created_at: string;
 }
 

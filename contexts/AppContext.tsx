@@ -279,7 +279,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const unsubscribe = api.subscribeToNotifications(userId, (n) => {
       setNotifications((list) => [n, ...list.filter((x) => x.id !== n.id)]);
       setLastNotification(n);
-      setToast({ id: Date.now(), title: n.title, message: n.body, tone: "info", notification: n });
+      // Silent alerts (e.g. "Profile completed") only appear in the Notifications list.
+      if (!n.data?.silent) setToast({ id: Date.now(), title: n.title, message: n.body, tone: "info", notification: n });
       if (n.type === "verification_result") reloadDogs().catch(() => undefined);
       if (n.type === "verifier_review") loadSession().catch(() => undefined);
     });
@@ -324,6 +325,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
           break;
         case "verifier_review":
           navigate("vet-profile");
+          break;
+        case "system":
+          if (d.kind === "complete_profile" || d.kind === "profile_completed" || d.kind === "location_updated") navigate("edit-profile");
+          else navigate("notifications");
           break;
         case "match_alert":
           if (d.for_dog_id) setActiveDogId(d.for_dog_id);
@@ -379,6 +384,22 @@ export function useApp() {
   const context = useContext(AppContext);
   if (!context) throw new Error("useApp must be used within an AppProvider");
   return context;
+}
+
+/**
+ * Owner screens that need the user's location (adding a dog, sending a match request) call this.
+ * While the profile is incomplete it swaps the screen for Edit Profile, which returns here once
+ * the location is saved, and returns true so the caller renders nothing in the meantime.
+ */
+export function useLocationGate(): boolean {
+  const { session, screen, params, replace } = useApp();
+  const blocked = !!session?.owner && !session.user.profile_completed;
+  useEffect(() => {
+    if (blocked) replace("edit-profile", { requireLocation: true, next: { screen, params } });
+    // Runs once per screen visit; screen and params are fixed for this route.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [blocked]);
+  return blocked;
 }
 
 /** Signed-in session; only call from screens that require authentication. */

@@ -446,11 +446,15 @@ export function SettingsScreen() {
 
 /* ── Edit profile ───────────────────────────────────────────────── */
 export function EditProfileScreen() {
-  const { goBack, refreshSession, showToast } = useApp();
+  const { goBack, replace, params, refreshSession, showToast } = useApp();
   const session = useSession();
+  const incomplete = !session.user.profile_completed;
   const [name, setName] = useState(session.user.full_name);
   const [phone, setPhone] = useState(session.user.phone ?? "");
-  const [district, setDistrict] = useState<string>(districtOf(session.user.location) ?? DEFAULT_LOCATION);
+  // An incomplete profile only has the default location, so make the user pick one.
+  const [district, setDistrict] = useState<string | null>(
+    incomplete ? null : (districtOf(session.user.location) ?? DEFAULT_LOCATION),
+  );
   const [photo, setPhoto] = useState<PickedFile | null>(null);
   const [saving, setSaving] = useState(false);
   const currentPhoto = api.avatarUrl(session.user.avatar_url);
@@ -465,9 +469,15 @@ export function EditProfileScreen() {
       showMessage("Name required", "Enter your full name.");
       return;
     }
+    if (!district) {
+      showMessage("Location required", "Choose your district so we can show you dogs nearby.");
+      return;
+    }
+    const location = districtLocation(district);
+    const locationChanged = incomplete || location !== session.user.location;
     setSaving(true);
     try {
-      await api.updateMyProfile(name, phone, districtLocation(district));
+      await api.updateMyProfile(name, phone, location);
     } catch (e) {
       showMessage("Couldn't save", api.errorMessage(e));
       setSaving(false);
@@ -488,8 +498,11 @@ export function EditProfileScreen() {
       showMessage("Details saved, photo not updated", photoError);
       return;
     }
-    showToast("Profile updated", undefined, "success");
-    goBack();
+    // A new location is announced in Notifications (the bell) instead of a toast.
+    if (!locationChanged) showToast("Profile updated", undefined, "success");
+    // Opened from a screen that needed the location: continue to it.
+    if (params.next) replace(params.next.screen, params.next.params);
+    else goBack();
   };
 
   const role = session.owner && session.verifier ? "Dog Owner & Verifier" : session.verifier ? "Verifier" : "Dog Owner";
@@ -552,6 +565,22 @@ export function EditProfileScreen() {
         </View>
 
         <View style={{ paddingHorizontal: 16, gap: 16 }}>
+          {incomplete && (
+            <Card style={{ flexDirection: "row", gap: 12, backgroundColor: T.primaryLight, borderWidth: 1, borderColor: T.primary }}>
+              <MapPin size={20} color={T.primaryDark} strokeWidth={2.25} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 14, color: T.primaryDark, fontFamily: FONT_BOLD }}>
+                  {params.requireLocation ? "We need your location first" : "Complete your profile"}
+                </Text>
+                <Text style={{ fontSize: 13, lineHeight: 19, color: T.dark, fontFamily: FONT, marginTop: 2 }}>
+                  {params.requireLocation
+                    ? "Choose your district below. PawMatch uses it to match your dog with partners nearby."
+                    : "Choose your district so PawMatch can show you dogs nearby."}
+                </Text>
+              </View>
+            </Card>
+          )}
+
           <SectionCard icon={User} title="Personal Info">
             <IconField icon={User} label="Full Name" value={name} onChangeText={setName} autoComplete="name" placeholder="Enter your full name" />
             <IconField
@@ -565,7 +594,7 @@ export function EditProfileScreen() {
             <IconField icon={Phone} label="Phone Number" value={phone} onChangeText={setPhone} keyboardType="phone-pad" autoComplete="tel" placeholder="0917 123 4567" last />
           </SectionCard>
 
-          <SectionCard icon={MapPin} title="Location" subtitle={`Currently set to ${district}`}>
+          <SectionCard icon={MapPin} title="Location" subtitle={district ? `Currently set to ${district}` : "Choose your district"}>
             <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
               {[DEFAULT_LOCATION, ...DAVAO_DISTRICTS].map((d) => (
                 <Chip key={d} label={d} active={district === d} onPress={() => setDistrict(d)} />
