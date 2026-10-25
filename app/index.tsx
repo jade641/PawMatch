@@ -10,10 +10,18 @@ import {
 } from "../components/Community";
 import { ConversationScreen, RequestsScreen } from "../components/Conversation";
 import { FilterScreen, HomeScreen, MatchScreen } from "../components/Home";
-import { AddDog, DogProfile, EditDog, MatchProfileScreen, OwnerProfile, SendRequest } from "../components/Profile";
+import { AddDog, DogProfile, EditDog, MatchProfileScreen, OwnerProfile, OwnerSettings, SendRequest } from "../components/Profile";
 import { Loading } from "../components/ui";
 import { AuditTrailScreen, VerifyChoose, VerifyStatus, VerifyUpload } from "../components/Verify";
-import { VetDashboard, VetProfile, VetRequestDetail, VetRequests, VetRecords, VetSettings } from "../components/Veterinarian";
+import {
+  VetDashboard,
+  VetProfessionalDetails,
+  VetProfile,
+  VetRequestDetail,
+  VetRequests,
+  VetRecords,
+  VetSettings,
+} from "../components/Veterinarian";
 import { isVetPortal, useApp } from "../contexts/AppContext";
 import { useThemePreference } from "../contexts/ThemeContext";
 import { Shell } from "../navigation/Shell";
@@ -42,6 +50,7 @@ const OWNER_SCREENS: Partial<Record<Screen, () => ReactNode>> = {
   "add-dog": () => <AddDog />,
   "edit-dog": () => <EditDog />,
   "owner-profile": () => <OwnerProfile />,
+  "owner-settings": () => <OwnerSettings />,
   "verify-upload": () => <VerifyUpload />,
   "verify-choose": () => <VerifyChoose />,
   "verify-status": () => <VerifyStatus />,
@@ -55,6 +64,7 @@ const VET_SCREENS: Partial<Record<Screen, () => ReactNode>> = {
   "vet-records": () => <VetRecords />,
   "vet-profile": () => <VetProfile />,
   "vet-settings": () => <VetSettings />,
+  "vet-professional": () => <VetProfessionalDetails />,
 };
 
 const ADMIN_SCREENS: Partial<Record<Screen, () => ReactNode>> = {

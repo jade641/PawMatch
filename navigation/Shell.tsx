@@ -5,7 +5,6 @@ import {
   FileCheck,
   Heart,
   Home,
-  LayoutDashboard,
   Shield,
   ShieldCheck,
   Stethoscope,
@@ -33,15 +32,15 @@ const OWNER_TABS: Tab[] = [
   {
     icon: User,
     label: "Profile",
-    screens: ["owner-profile", "reputation", "settings", "edit-profile", "change-password"],
+    screens: ["owner-profile", "owner-settings", "reputation", "settings", "edit-profile", "change-password"],
   },
 ];
 
 const VET_TABS: Tab[] = [
-  { icon: LayoutDashboard, label: "Dashboard", screens: ["vet-dashboard", "notifications"] },
+  { icon: Home, label: "Home", screens: ["vet-dashboard", "notifications"] },
   { icon: ClipboardList, label: "Requests", screens: ["vet-requests", "vet-request-detail"] },
   { icon: FileCheck, label: "Records", screens: ["vet-records"] },
-  { icon: Stethoscope, label: "Profile", screens: ["vet-profile", "vet-settings", "edit-profile", "change-password"] },
+  { icon: Stethoscope, label: "Profile", screens: ["vet-profile", "vet-settings", "vet-professional", "edit-profile", "change-password"] },
 ];
 
 /** Appended to the owner or vet tabs for administrators. */

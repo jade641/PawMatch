@@ -1,5 +1,7 @@
+import Constants from "expo-constants";
 import {
   Award,
+  Bell,
   Calendar,
   Camera,
   Check,
@@ -10,8 +12,10 @@ import {
   Edit,
   FileCheck,
   FileText,
+  Heart,
   HelpCircle,
   KeyRound,
+  Lock,
   LogOut,
   Mars,
   MapPin,
@@ -61,6 +65,8 @@ import {
   Btn,
   Card,
   confirmAction,
+  CountBadge,
+  DATA_DELETION_URL,
   DogImage,
   EmptyState,
   ErrorView,
@@ -71,15 +77,20 @@ import {
   InfoRow,
   ListItem,
   Loading,
+  openLink,
+  PRIVACY_URL,
   ScoreBar,
   SectionCard,
   SectionTitle,
   SegmentedTabs,
+  SettingsGroup,
+  SettingsProfileCard,
   showMessage,
   Stars,
   DarkModeToggle,
   Tag,
   TextLink,
+  useThemeScrollRestore,
   VeriBadge,
 } from "./ui";
 
@@ -719,7 +730,7 @@ export function EditDog() {
 
 /* ── Owner profile (Figure 14) ──────────────────────────────────── */
 export function OwnerProfile() {
-  const { navigate, goBack, canGoBack, myDogs, signOut, switchPortal } = useApp();
+  const { navigate, goBack, canGoBack, myDogs, switchPortal } = useApp();
   const session = useSession();
   const owner = session.owner;
   const memberSince = formatDate(session.user.created_at, { day: undefined });
@@ -739,7 +750,12 @@ export function OwnerProfile() {
           subtitle="Your account, dogs and reputation"
           onBack={canGoBack ? goBack : undefined}
           overlap={56}
-          right={<HeroIconButton icon={Edit} label="Edit profile" onPress={() => navigate("edit-profile")} />}
+          right={
+            <View style={{ flexDirection: "row", gap: 8 }}>
+              <HeroIconButton icon={Edit} label="Edit profile" onPress={() => navigate("edit-profile")} />
+              <HeroIconButton icon={Settings} label="Settings" onPress={() => navigate("owner-settings")} />
+            </View>
+          }
         />
 
         {/* Profile card overlapping the hero */}
@@ -921,16 +937,93 @@ export function OwnerProfile() {
             />
           </View>
         )}
+      </ScrollView>
+    </View>
+  );
+}
 
-        <View style={{ paddingHorizontal: 20, marginTop: 24 }}>
-          <SectionTitle title="Settings" icon={Settings} />
-          <View style={{ borderRadius: 18, backgroundColor: T.white, padding: 14, marginBottom: 12, ...shadow }}>
-            <DarkModeToggle />
-          </View>
-          <View style={{ borderRadius: 18, overflow: "hidden", backgroundColor: T.white, ...shadow }}>
+/* ── Owner settings ─────────────────────────────────────────────── */
+export function OwnerSettings() {
+  const { navigate, goBack, canGoBack, myDogs, signOut, switchPortal, unreadCount } = useApp();
+  const session = useSession();
+  const version = Constants.expoConfig?.version ?? "1.0.0";
+  const verifiedDogs = myDogs.filter((d) => d.verified).length;
+  const scroll = useThemeScrollRestore();
+
+  return (
+    <View style={{ flex: 1, backgroundColor: T.bg }}>
+      <ScrollView {...scroll} contentContainerStyle={{ paddingBottom: 32 }}>
+        <HeroHeader title="Settings" subtitle="Manage your PawMatch account" onBack={canGoBack ? goBack : undefined} overlap={36} />
+
+        <View style={{ marginTop: -36, paddingHorizontal: 20, gap: 22 }}>
+          <SettingsProfileCard
+            name={session.user.full_name}
+            email={session.user.email}
+            avatarUri={api.avatarUrl(session.user.avatar_url)}
+            onPress={() => navigate("edit-profile")}
+          />
+
+          <SettingsGroup title="ACCOUNT">
             <ListItem icon={User} title="Edit Profile" subtitle="Name, phone, location and photo" onPress={() => navigate("edit-profile")} />
-            <ListItem icon={KeyRound} title="Change Password" onPress={() => navigate("change-password")} />
-            <ListItem icon={HelpCircle} title="Help & About" subtitle="How matching and verification work" onPress={() => navigate("settings")} />
+            <ListItem icon={KeyRound} title="Change Password" subtitle="Keep your account secure" onPress={() => navigate("change-password")} />
+            <ListItem
+              icon={Bell}
+              title="Notifications"
+              subtitle="Match requests, messages and verification updates"
+              onPress={() => navigate("notifications")}
+              right={unreadCount > 0 ? <CountBadge count={unreadCount} /> : undefined}
+              last
+            />
+          </SettingsGroup>
+
+          <SettingsGroup title="MY DOGS">
+            <ListItem
+              icon={PawPrint}
+              title="Manage Dogs"
+              subtitle={myDogs.length ? `${myDogs.length} dog${myDogs.length === 1 ? "" : "s"} • ${verifiedDogs} verified` : "You haven't added a dog yet"}
+              onPress={() => navigate(myDogs.length ? "dog-profile" : "add-dog")}
+            />
+            <ListItem icon={Plus} title="Add a Dog" subtitle="Create a new dog profile" onPress={() => navigate("add-dog")} />
+            <ListItem icon={Upload} title="Upload Documents" subtitle="Vaccination card, health clearance, pedigree" onPress={() => navigate(myDogs.length ? "verify-upload" : "add-dog")} />
+            <ListItem icon={ShieldCheck} title="Verification Status" subtitle="Track documents sent to verifiers" onPress={() => navigate(myDogs.length ? "verify-status" : "add-dog")} last />
+          </SettingsGroup>
+
+          <SettingsGroup title="MATCHING">
+            <ListItem icon={Heart} title="Find Matches" subtitle="Filter and browse compatible dogs" onPress={() => navigate("filter")} />
+            <ListItem icon={MessageSquare} title="Match Requests" subtitle="Sent, received and ongoing conversations" onPress={() => navigate("requests")} />
+            <ListItem icon={Star} title="Reputation & Reviews" subtitle="Badges, reviews and match history" onPress={() => navigate("reputation")} last />
+          </SettingsGroup>
+
+          <SettingsGroup title="APPEARANCE">
+            <View style={{ padding: 14 }}>
+              <DarkModeToggle />
+            </View>
+          </SettingsGroup>
+
+          {(session.verifier || session.user.role === "admin") && (
+            <SettingsGroup title="PORTALS">
+              {session.verifier && (
+                <ListItem
+                  icon={Stethoscope}
+                  title="Switch to Vet / Breeder"
+                  subtitle={session.verifier.approved ? "Review documents sent to you" : "Your application is waiting for approval"}
+                  onPress={() => switchPortal("vet")}
+                  last={session.user.role !== "admin"}
+                />
+              )}
+              {session.user.role === "admin" && (
+                <ListItem icon={ShieldCheck} title="Admin Panel" subtitle="Approve vets and breeders" onPress={() => navigate("admin-verifiers")} last />
+              )}
+            </SettingsGroup>
+          )}
+
+          <SettingsGroup title="SUPPORT & PRIVACY">
+            <ListItem icon={HelpCircle} title="Help & About" subtitle="How matching and verification work, contact support" onPress={() => navigate("settings")} />
+            <ListItem icon={Lock} title="Privacy Policy" subtitle="What we collect and how it's used" onPress={() => openLink(PRIVACY_URL)} />
+            <ListItem icon={Trash2} title="Delete Account & Data" subtitle="How to request deletion of your data" onPress={() => openLink(DATA_DELETION_URL)} last />
+          </SettingsGroup>
+
+          <View style={{ borderRadius: 18, overflow: "hidden", ...shadow }}>
             <ListItem
               icon={LogOut}
               title="Log Out"
@@ -939,6 +1032,10 @@ export function OwnerProfile() {
               onPress={() => confirmAction("Log out?", "You'll need to sign in again to use PawMatch.", "Log Out", signOut)}
             />
           </View>
+
+          <Text style={{ fontSize: 12, color: T.medium, fontFamily: FONT, textAlign: "center" }}>
+            PawMatch Mobile • Version {version} (beta)
+          </Text>
         </View>
       </ScrollView>
     </View>

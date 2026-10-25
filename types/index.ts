@@ -240,6 +240,7 @@ export type Screen =
   | "reputation"
   | "notifications"
   | "settings"
+  | "owner-settings"
   | "edit-profile"
   | "change-password"
   | "vet-dashboard"
@@ -248,5 +249,6 @@ export type Screen =
   | "vet-records"
   | "vet-profile"
   | "vet-settings"
+  | "vet-professional"
   | "admin-verifiers"
   | "admin-verifier-detail";

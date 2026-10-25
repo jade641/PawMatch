@@ -1,3 +1,4 @@
+import Constants from "expo-constants";
 import * as WebBrowser from "expo-web-browser";
 import {
   Bell,
@@ -13,6 +14,7 @@ import {
   IdCard,
   Inbox,
   KeyRound,
+  Lock,
   LogOut,
   Mail,
   MapPin,
@@ -25,6 +27,7 @@ import {
   ShieldCheck,
   Star,
   Stethoscope,
+  Trash2,
   User,
   XCircle,
 } from "lucide-react-native";
@@ -51,6 +54,8 @@ import {
   Avatar,
   Btn,
   confirmAction,
+  CountBadge,
+  DATA_DELETION_URL,
   DogImage,
   EmptyState,
   ErrorView,
@@ -58,10 +63,17 @@ import {
   HeroHeader,
   HeroIconButton,
   InfoRow,
+  ListItem,
   Loading,
   DarkModeToggle,
+  openLink,
+  PRIVACY_URL,
+  SectionCard,
+  SettingsGroup,
+  SettingsProfileCard,
   showMessage,
   Tag,
+  useThemeScrollRestore,
   VeriBadge,
 } from "./ui";
 
@@ -169,7 +181,8 @@ function statusStyle(status: SubmissionStatus) {
   return { Icon: Clock, color: T.warning, tint: T.warningLight };
 }
 
-function PendingApprovalBanner() {
+/** Short approval note shown inside a card while the verifier isn't approved yet. */
+function ApprovalNotice({ onFix, style }: { onFix?: () => void; style?: object }) {
   const session = useSession();
   const v = session.verifier;
   if (!v || v.approved) return null;
@@ -177,37 +190,22 @@ function PendingApprovalBanner() {
   const color = rejected ? T.error : T.warning;
   const Icon = rejected ? XCircle : ShieldAlert;
   return (
-    <View
-      style={{
-        flexDirection: "row",
-        gap: 12,
-        padding: 16,
-        borderRadius: 20,
-        backgroundColor: rejected ? T.errorLight : T.warningLight,
-        borderLeftWidth: 4,
-        borderLeftColor: color,
-      }}
-    >
-      <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: T.white, alignItems: "center", justifyContent: "center" }}>
-        <Icon size={20} color={color} strokeWidth={2.25} />
-      </View>
-      <View style={{ flex: 1, gap: 3 }}>
-        <Text style={{ fontSize: 15, color: T.dark, fontFamily: FONT_BOLD }}>
-          {rejected ? "Account not approved" : "Account pending approval"}
+    <View style={[{ flexDirection: "row", gap: 10, padding: 12, borderRadius: 14, backgroundColor: T.bg }, style]}>
+      <Icon size={16} color={color} strokeWidth={2.25} style={{ marginTop: 1 }} />
+      <View style={{ flex: 1, gap: 2 }}>
+        <Text style={{ fontSize: 13, color: T.dark, fontFamily: FONT_BOLD }}>
+          {rejected ? "Your application wasn't approved" : "Your account is under review"}
         </Text>
-        {rejected ? (
-          <>
-            {v.review_notes ? <Text style={{ fontSize: 13, color: T.dark, fontFamily: FONT, lineHeight: 19 }}>Reason: {v.review_notes}</Text> : null}
-            <Text style={{ fontSize: 13, color: T.dark, fontFamily: FONT, lineHeight: 19 }}>
-              Correct your license number under Profile → Professional Information to send it for another review.
-            </Text>
-          </>
-        ) : (
-          <Text style={{ fontSize: 13, color: T.dark, fontFamily: FONT, lineHeight: 19 }}>
-            The PawMatch team is checking your license ({v.license_number || "not provided"}). Owners can send you
-            documents once your account is approved.
-          </Text>
-        )}
+        <Text style={{ fontSize: 12, color: T.medium, fontFamily: FONT, lineHeight: 17 }}>
+          {rejected
+            ? `${v.review_notes ? `Reason: ${v.review_notes}. ` : ""}Update your license number to request another review.`
+            : `We're verifying license ${v.license_number || "(not provided)"}. You can review documents once approved.`}
+        </Text>
+        {rejected && onFix ? (
+          <TouchableOpacity onPress={onFix} hitSlop={8} style={{ alignSelf: "flex-start", marginTop: 4 }} accessibilityRole="button">
+            <Text style={{ fontSize: 12, color: T.primary, fontFamily: FONT_BOLD }}>Update license →</Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
     </View>
   );
@@ -299,18 +297,14 @@ export function VetDashboard() {
   const all = queue.data ?? [];
   const today = new Date().toDateString();
   const pending = all.filter((s) => s.status === "owner_submitted");
+  const reviewed = all
+    .filter((s) => s.status !== "owner_submitted" && s.reviewed_at)
+    .sort((a, b) => new Date(b.reviewed_at!).getTime() - new Date(a.reviewed_at!).getTime());
+  const reviewedToday = reviewed.filter((s) => new Date(s.reviewed_at!).toDateString() === today).length;
   const stats = [
-    { Icon: Clock, n: pending.length, label: "Pending Reviews", tint: T.primaryLight, color: T.primary, go: () => navigate("vet-requests") },
-    { Icon: CheckCircle, n: all.filter((s) => s.status === "vet_verified").length, label: "Verified", tint: T.successLight, color: T.success, go: () => navigate("vet-records") },
-    { Icon: XCircle, n: all.filter((s) => s.status === "verification_failed").length, label: "Rejected", tint: T.errorLight, color: T.error, go: () => navigate("vet-records") },
-    {
-      Icon: FileCheck,
-      n: all.filter((s) => s.reviewed_at && new Date(s.reviewed_at).toDateString() === today).length,
-      label: "Reviewed Today",
-      tint: T.accentLight,
-      color: T.accent,
-      go: () => navigate("vet-records"),
-    },
+    { label: "Pending", n: pending.length, color: T.warning, go: () => navigate("vet-requests") },
+    { label: "Verified", n: all.filter((s) => s.status === "vet_verified").length, color: T.success, go: () => navigate("vet-records") },
+    { label: "Rejected", n: all.filter((s) => s.status === "verification_failed").length, color: T.error, go: () => navigate("vet-records") },
   ];
 
   const hour = new Date().getHours();
@@ -321,6 +315,7 @@ export function VetDashboard() {
     : v?.reviewed_at
       ? { Icon: XCircle, label: "Not Approved" }
       : { Icon: Clock, label: "Pending Approval" };
+  const subtitle = [v?.role, v?.clinic].filter(Boolean).join(" • ");
 
   return (
     <View style={{ flex: 1, backgroundColor: T.bg }}>
@@ -349,99 +344,76 @@ export function VetDashboard() {
           <Text style={{ fontSize: 26, color: "#fff", fontFamily: FONT_BOLD, letterSpacing: -0.5, marginTop: 2 }} numberOfLines={1}>
             {name}
           </Text>
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.2)" }}>
-              <statusPill.Icon size={14} color="#fff" strokeWidth={2.25} />
-              <Text style={{ fontSize: 12, color: "#fff", fontFamily: FONT_BOLD }}>{statusPill.label}</Text>
-            </View>
-            {v?.clinic ? (
-              // maxWidth + flexShrink let a long clinic name wrap to its own row and truncate there,
-              // instead of pushing the chip past the screen edge.
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.2)", maxWidth: "100%" }}>
-                <Building2 size={14} color="#fff" strokeWidth={2.25} />
-                <Text style={{ fontSize: 12, color: "#fff", fontFamily: FONT_BOLD, flexShrink: 1 }} numberOfLines={1}>
-                  {v.clinic}
-                </Text>
-              </View>
-            ) : null}
-          </View>
+          {subtitle ? (
+            <Text style={{ fontSize: 13, color: "rgba(255,255,255,0.85)", fontFamily: FONT_MEDIUM, marginTop: 4 }} numberOfLines={1}>
+              {subtitle}
+            </Text>
+          ) : null}
         </HeroHeader>
 
-        <View style={{ marginTop: -48, paddingHorizontal: 16, gap: 22 }}>
-          {/* Stats 2×2 */}
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
-            {stats.map((s) => (
-              <TouchableOpacity
-                key={s.label}
-                onPress={s.go}
-                activeOpacity={0.8}
-                style={{ flexGrow: 1, flexBasis: "45%", backgroundColor: T.white, borderRadius: 20, padding: 16, ...shadow }}
-              >
-                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                  <View style={{ width: 40, height: 40, borderRadius: 13, backgroundColor: s.tint, alignItems: "center", justifyContent: "center" }}>
-                    <s.Icon size={20} color={s.color} strokeWidth={2} />
+        <View style={{ marginTop: -48, paddingHorizontal: 16, gap: 24 }}>
+          {/* Review summary */}
+          <Panel style={{ padding: 0 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 18, paddingTop: 16 }}>
+              <Text style={{ fontSize: 15, color: T.dark, fontFamily: FONT_BOLD }}>Review Summary</Text>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+                <statusPill.Icon size={13} color={v?.approved ? T.success : v?.reviewed_at ? T.error : T.warning} strokeWidth={2.25} />
+                <Text style={{ fontSize: 12, color: T.medium, fontFamily: FONT_MEDIUM }}>{statusPill.label}</Text>
+              </View>
+            </View>
+            <ApprovalNotice onFix={() => navigate("vet-professional")} style={{ marginHorizontal: 18, marginTop: 12 }} />
+
+            <View style={{ flexDirection: "row", paddingVertical: 16 }}>
+              {stats.map((s, i) => (
+                <TouchableOpacity
+                  key={s.label}
+                  onPress={s.go}
+                  activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${s.n} ${s.label}`}
+                  style={{ flex: 1, alignItems: "center", borderLeftWidth: i === 0 ? 0 : 1, borderLeftColor: T.border }}
+                >
+                  <Text style={{ fontSize: 24, color: T.dark, fontFamily: FONT_BOLD }}>{queue.loading ? "–" : s.n}</Text>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 5, marginTop: 2 }}>
+                    <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: s.color }} />
+                    <Text style={{ fontSize: 12, color: T.medium, fontFamily: FONT }}>{s.label}</Text>
                   </View>
-                  <ChevronRight size={16} color={T.light} />
-                </View>
-                <Text style={{ fontSize: 28, color: T.dark, fontFamily: FONT_BOLD, marginTop: 12 }}>{queue.loading ? "–" : s.n}</Text>
-                <Text style={{ fontSize: 12, color: T.medium, fontFamily: FONT_MEDIUM, marginTop: 2 }}>{s.label}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          <PendingApprovalBanner />
-
-          {/* Primary call to action */}
-          <TouchableOpacity
-            onPress={() => navigate("vet-requests")}
-            activeOpacity={0.9}
-            style={{ borderRadius: 24, padding: 20, overflow: "hidden", backgroundColor: T.ink }}
-          >
-            <View style={{ position: "absolute", right: -30, top: -30, width: 140, height: 140, borderRadius: 70, backgroundColor: T.primary, opacity: 0.9 }} />
-            <ClipboardList size={34} color="#fff" strokeWidth={2} style={{ position: "absolute", right: 22, top: 20 }} />
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-              <Stethoscope size={14} color={T.secondary} strokeWidth={2.25} />
-              <Text style={{ fontSize: 11, color: T.secondary, fontFamily: FONT_BOLD, letterSpacing: 1 }}>REVIEW QUEUE</Text>
+                </TouchableOpacity>
+              ))}
             </View>
-            <Text style={{ fontSize: 20, lineHeight: 26, color: "#fff", fontFamily: FONT_BOLD, marginTop: 8, maxWidth: "75%" }}>
-              {pending.length === 0
-                ? "You're all caught up!"
-                : `${pending.length} document${pending.length === 1 ? "" : "s"} waiting for your review`}
-            </Text>
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                alignSelf: "flex-start",
-                gap: 4,
-                marginTop: 14,
-                paddingVertical: 9,
-                paddingLeft: 16,
-                paddingRight: 10,
-                borderRadius: 14,
-                backgroundColor: T.primary,
-              }}
-            >
-              <Text style={{ color: "#fff", fontFamily: FONT_BOLD, fontSize: 14 }}>{pending.length === 0 ? "Open Queue" : "Start Reviewing"}</Text>
-              <ChevronRight size={18} color="#fff" strokeWidth={2.5} />
-            </View>
-          </TouchableOpacity>
 
-          <MenuGroup
-            items={[
-              { icon: ClipboardList, title: "Verification Requests", subtitle: `${pending.length} waiting for you`, badge: pending.length, onPress: () => navigate("vet-requests") },
-              { icon: FileText, title: "Verification Records", subtitle: "Everything you have approved or rejected", tint: T.accentLight, color: T.accent, onPress: () => navigate("vet-records") },
-            ]}
-          />
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 18, paddingVertical: 14, borderTopWidth: 1, borderTopColor: T.border }}>
+              <Text style={{ flex: 1, fontSize: 13, color: T.medium, fontFamily: FONT }}>
+                {queue.loading ? "Loading…" : `${reviewedToday} reviewed today`}
+              </Text>
+              <Btn
+                title={pending.length ? "Start Reviewing" : "Open Queue"}
+                icon={ClipboardList}
+                size="small"
+                onPress={() => navigate("vet-requests")}
+              />
+            </View>
+          </Panel>
 
           <View>
-            <SectionHeader title="Waiting for review" action="View all" onAction={() => navigate("vet-requests")} />
+            <SectionHeader title="Waiting for review" action={pending.length > 5 ? "View all" : undefined} onAction={() => navigate("vet-requests")} />
             <QueueBody
               queue={queue}
               list={pending.slice(0, 5)}
               empty={{ icon: CheckCircle, title: "All caught up", message: "New documents from dog owners will appear here and you'll get an alert." }}
             />
           </View>
+
+          {reviewed.length > 0 && (
+            <View>
+              <SectionHeader title="Recently reviewed" action="View records" onAction={() => navigate("vet-records")} />
+              <View style={{ gap: 12 }}>
+                {reviewed.slice(0, 3).map((s) => (
+                  <SubmissionCard key={s.id} s={s} />
+                ))}
+              </View>
+            </View>
+          )}
         </View>
       </ScrollView>
     </View>
@@ -915,6 +887,7 @@ export function VetProfile() {
               <approval.Icon size={14} color={approval.color} strokeWidth={2.25} />
               <Text style={{ fontSize: 12, color: approval.color, fontFamily: FONT_BOLD }}>{approval.label}</Text>
             </View>
+            <ApprovalNotice onFix={() => setEditing(true)} style={{ alignSelf: "stretch", marginTop: 14 }} />
 
             <View style={{ flexDirection: "row", alignSelf: "stretch", marginTop: 18, paddingTop: 16, borderTopWidth: 1, borderTopColor: T.bg }}>
               {[
@@ -932,8 +905,6 @@ export function VetProfile() {
               ))}
             </View>
           </Panel>
-
-          <PendingApprovalBanner />
 
           {/* Availability */}
           <Panel style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
@@ -1027,64 +998,269 @@ export function VetProfile() {
   );
 }
 
-/* ── Verifier settings ──────────────────────────────────────────── */
-export function VetSettings() {
-  const { navigate, goBack, signOut } = useApp();
+/* ── Professional details ───────────────────────────────────────── */
+export function VetProfessionalDetails() {
+  const { goBack, canGoBack, refreshSession, showToast } = useApp();
   const session = useSession();
-  const name = session.verifier?.name ?? session.user.full_name;
+  const v = session.verifier;
+  const [clinic, setClinic] = useState(v?.clinic ?? "");
+  const [license, setLicense] = useState(v?.license_number ?? "");
+  const [errors, setErrors] = useState<{ license?: string }>({});
+  const [saving, setSaving] = useState(false);
+
+  if (!v) return <ErrorView message="This account has no verifier profile." />;
+
+  const licenseChanged = license.trim() !== v.license_number;
+  const changed = licenseChanged || clinic.trim() !== v.clinic;
+  const approval = v.approved
+    ? { Icon: CheckCircle, label: "Approved", color: T.success, tint: T.successLight }
+    : v.reviewed_at
+      ? { Icon: XCircle, label: "Not approved", color: T.error, tint: T.errorLight }
+      : { Icon: Clock, label: "Under review", color: T.warning, tint: T.warningLight };
+
+  const persist = async () => {
+    setSaving(true);
+    try {
+      await api.updateVerifierProfile(session.user.id, { clinic: clinic.trim(), license_number: license.trim() });
+      await refreshSession();
+      showToast(
+        "Professional details saved",
+        licenseChanged ? "Your new license was sent to the PawMatch team for review." : undefined,
+        "success",
+      );
+      if (canGoBack) goBack();
+    } catch (e) {
+      showMessage("Couldn't save", api.errorMessage(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const save = () => {
+    if (!license.trim()) {
+      setErrors({ license: "Enter your license or certification number" });
+      return;
+    }
+    setErrors({});
+    if (licenseChanged && v.approved) {
+      confirmAction(
+        "Change license number?",
+        "Your account will need to be approved again. You won't receive new documents until the PawMatch team reviews it.",
+        "Change",
+        persist,
+      );
+    } else {
+      persist();
+    }
+  };
+
   return (
-    <View style={{ flex: 1, backgroundColor: T.bg }}>
-      <ScrollView contentContainerStyle={{ paddingBottom: 32 }}>
-        <HeroHeader title="Settings" subtitle="Manage your veterinarian account" onBack={goBack} overlap={36} />
-        <View style={{ marginTop: -36, paddingHorizontal: 16, gap: 22 }}>
-          <Panel style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
-            <Avatar name={name} size={52} uri={api.avatarUrl(session.user.avatar_url)} />
-            <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 16, color: T.dark, fontFamily: FONT_BOLD }} numberOfLines={1}>
-                {name}
-              </Text>
-              <Text style={{ fontSize: 13, color: T.medium, fontFamily: FONT, marginTop: 2 }} numberOfLines={1}>
-                {session.user.email}
-              </Text>
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: T.bg }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+      <ScrollView contentContainerStyle={{ paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
+        <HeroHeader
+          title="Professional Details"
+          subtitle="The credentials dog owners rely on"
+          onBack={canGoBack ? goBack : undefined}
+          overlap={36}
+        />
+
+        <View style={{ marginTop: -36, paddingHorizontal: 20, gap: 16 }}>
+          {/* Credential status */}
+          <Panel style={{ gap: 14 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
+              <View style={{ width: 48, height: 48, borderRadius: 16, backgroundColor: approval.tint, alignItems: "center", justifyContent: "center" }}>
+                <approval.Icon size={24} color={approval.color} strokeWidth={2} />
+              </View>
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text style={{ fontSize: 12, color: T.medium, fontFamily: FONT }}>Verification status</Text>
+                <Text style={{ fontSize: 17, color: approval.color, fontFamily: FONT_BOLD }}>{approval.label}</Text>
+              </View>
             </View>
+            <View style={{ borderTopWidth: 1, borderTopColor: T.border, paddingTop: 4 }}>
+              <InfoRow label="Role" value={v.role} />
+              <InfoRow label="Applied" value={formatDate(v.created_at)} />
+              <InfoRow label={v.approved ? "Approved" : "Reviewed"} value={v.reviewed_at ? formatDate(v.reviewed_at) : "Not yet"} last />
+            </View>
+            <ApprovalNotice />
           </Panel>
 
-          <View>
-            <Text style={{ fontSize: 12, color: T.medium, fontFamily: FONT_BOLD, letterSpacing: 0.8, marginBottom: 10, marginLeft: 4 }}>ACCOUNT</Text>
-            <MenuGroup
-              items={[
-                { icon: User, title: "Edit Profile", subtitle: "Name, phone and location", onPress: () => navigate("edit-profile") },
-                { icon: KeyRound, title: "Change Password", subtitle: "Keep your account secure", tint: T.secondaryLight, color: T.secondaryDark, onPress: () => navigate("change-password") },
-                { icon: Bell, title: "Notifications", subtitle: "Alerts for new documents", tint: T.accentLight, color: T.accent, onPress: () => navigate("notifications") },
-              ]}
+          {/* Editable credentials */}
+          <SectionCard icon={IdCard} title="Credentials" subtitle="Shown to owners when they choose a verifier">
+            <Field
+              label="Clinic / Kennel"
+              value={clinic}
+              onChangeText={setClinic}
+              placeholder="e.g. Davao Animal Clinic"
+              maxLength={120}
             />
-          </View>
-
-          <View>
-            <Text style={{ fontSize: 12, color: T.medium, fontFamily: FONT_BOLD, letterSpacing: 0.8, marginBottom: 10, marginLeft: 4 }}>APPEARANCE</Text>
-            <Panel>
-              <DarkModeToggle />
-            </Panel>
-          </View>
-
-          <View>
-            <Text style={{ fontSize: 12, color: T.medium, fontFamily: FONT_BOLD, letterSpacing: 0.8, marginBottom: 10, marginLeft: 4 }}>SUPPORT</Text>
-            <MenuGroup
-              items={[{ icon: HelpCircle, title: "Help & About", subtitle: "FAQs and app information", tint: T.successLight, color: T.success, onPress: () => navigate("settings") }]}
+            <Field
+              label="License / Certification No. *"
+              value={license}
+              onChangeText={setLicense}
+              autoCapitalize="characters"
+              placeholder="e.g. PRC-0123456"
+              maxLength={60}
+              error={errors.license}
+              hint={licenseChanged ? undefined : "Use the number printed on your PRC license or breeder certificate."}
+              style={{ marginBottom: licenseChanged ? 12 : 0 }}
             />
-          </View>
+            {licenseChanged ? (
+              <View style={{ flexDirection: "row", gap: 8, padding: 12, borderRadius: 12, backgroundColor: T.bg }}>
+                <ShieldAlert size={15} color={T.warning} strokeWidth={2.25} style={{ marginTop: 1 }} />
+                <Text style={{ flex: 1, fontSize: 12, color: T.medium, fontFamily: FONT, lineHeight: 17 }}>
+                  Changing your license sends your account back to the PawMatch team for approval.
+                </Text>
+              </View>
+            ) : null}
+          </SectionCard>
 
-          <MenuGroup
-            items={[
-              {
-                icon: LogOut,
-                title: "Log Out",
-                subtitle: "Sign out of your veterinarian account",
-                danger: true,
-                onPress: () => confirmAction("Log out?", "You'll need to sign in again to review documents.", "Log Out", signOut),
-              },
-            ]}
+          {/* What owners see */}
+          <SectionCard icon={User} title="Public profile" subtitle="What owners see about you">
+            <InfoRow label="Name" value={v.name} />
+            <InfoRow label="Role" value={v.role} />
+            <InfoRow label="Rating" value={v.rating > 0 ? `${v.rating.toFixed(1)} ★` : "No ratings yet"} />
+            <InfoRow label="Availability" value={v.available ? "Available" : "Busy"} last />
+          </SectionCard>
+
+          <Btn title="Save Changes" icon={CheckCircle} size="large" loading={saving} disabled={!changed} onPress={save} />
+        </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
+  );
+}
+
+/* ── Verifier settings ──────────────────────────────────────────── */
+export function VetSettings() {
+  const { navigate, goBack, canGoBack, signOut, switchPortal, refreshSession, unreadCount } = useApp();
+  const session = useSession();
+  const v = session.verifier;
+  const queue = useQueue();
+  const scroll = useThemeScrollRestore();
+  const version = Constants.expoConfig?.version ?? "1.0.0";
+  const name = v?.name ?? session.user.full_name;
+  const pending = (queue.data ?? []).filter((s) => s.status === "owner_submitted").length;
+  const reviewed = (queue.data ?? []).length - pending;
+  const approvalTag = v?.approved ? (
+    <Tag label="✓ Approved verifier" tone="success" />
+  ) : v?.reviewed_at ? (
+    <Tag label="Not approved" tone="danger" />
+  ) : (
+    <Tag label="Pending approval" tone="warning" />
+  );
+
+  const toggleAvailable = async (available: boolean) => {
+    try {
+      await api.updateVerifierProfile(session.user.id, { available });
+      await refreshSession();
+    } catch (e) {
+      showMessage("Couldn't update availability", api.errorMessage(e));
+    }
+  };
+
+  return (
+    <View style={{ flex: 1, backgroundColor: T.bg }}>
+      <ScrollView {...scroll} contentContainerStyle={{ paddingBottom: 32 }}>
+        <HeroHeader title="Settings" subtitle="Manage your veterinarian account" onBack={canGoBack ? goBack : undefined} overlap={36} />
+
+        <View style={{ marginTop: -36, paddingHorizontal: 20, gap: 22 }}>
+          <SettingsProfileCard
+            name={name}
+            email={session.user.email}
+            avatarUri={api.avatarUrl(session.user.avatar_url)}
+            tag={approvalTag}
+            onPress={() => navigate("edit-profile")}
           />
+
+          <SettingsGroup title="ACCOUNT">
+            <ListItem icon={User} title="Edit Profile" subtitle="Name, phone, location and photo" onPress={() => navigate("edit-profile")} />
+            <ListItem icon={KeyRound} title="Change Password" subtitle="Keep your account secure" onPress={() => navigate("change-password")} />
+            <ListItem
+              icon={Bell}
+              title="Notifications"
+              subtitle="Alerts for new documents to review"
+              onPress={() => navigate("notifications")}
+              right={unreadCount > 0 ? <CountBadge count={unreadCount} /> : undefined}
+              last
+            />
+          </SettingsGroup>
+
+          {v && (
+            <SettingsGroup title="PROFESSIONAL">
+              <ListItem
+                icon={IdCard}
+                title="Professional Details"
+                subtitle={`${v.role} • License ${v.license_number || "—"}${v.clinic ? ` • ${v.clinic}` : ""}`}
+                onPress={() => navigate("vet-professional")}
+              />
+              <ListItem
+                icon={Stethoscope}
+                title="Available for reviews"
+                subtitle={v.available ? "Owners can send you documents" : "Owners see you as Busy"}
+                right={<Switch value={v.available} onValueChange={toggleAvailable} trackColor={{ true: T.primary, false: T.light }} thumbColor="#fff" />}
+                last
+              />
+            </SettingsGroup>
+          )}
+
+          <SettingsGroup title="REVIEWS">
+            <ListItem
+              icon={ClipboardList}
+              title="Verification Requests"
+              subtitle="Documents waiting for your review"
+              onPress={() => navigate("vet-requests")}
+              right={pending > 0 ? <CountBadge count={pending} /> : undefined}
+            />
+            <ListItem
+              icon={FileCheck}
+              title="Verification Records"
+              subtitle={queue.loading ? "Your review history" : `${reviewed} document${reviewed === 1 ? "" : "s"} reviewed`}
+              onPress={() => navigate("vet-records")}
+              last
+            />
+          </SettingsGroup>
+
+          <SettingsGroup title="APPEARANCE">
+            <View style={{ padding: 14 }}>
+              <DarkModeToggle />
+            </View>
+          </SettingsGroup>
+
+          {(session.owner || session.user.role === "admin") && (
+            <SettingsGroup title="PORTALS">
+              {session.owner && (
+                <ListItem
+                  icon={PawPrint}
+                  title="Switch to Dog Owner"
+                  subtitle="Your dogs, matches and messages"
+                  onPress={() => switchPortal("owner")}
+                  last={session.user.role !== "admin"}
+                />
+              )}
+              {session.user.role === "admin" && (
+                <ListItem icon={ShieldCheck} title="Admin Panel" subtitle="Approve vets and breeders" onPress={() => navigate("admin-verifiers")} last />
+              )}
+            </SettingsGroup>
+          )}
+
+          <SettingsGroup title="SUPPORT & PRIVACY">
+            <ListItem icon={HelpCircle} title="Help & About" subtitle="How verification works, contact support" onPress={() => navigate("settings")} />
+            <ListItem icon={Lock} title="Privacy Policy" subtitle="How owners' documents are protected" onPress={() => openLink(PRIVACY_URL)} />
+            <ListItem icon={Trash2} title="Delete Account & Data" subtitle="How to request deletion of your data" onPress={() => openLink(DATA_DELETION_URL)} last />
+          </SettingsGroup>
+
+          <View style={{ borderRadius: 18, overflow: "hidden", ...shadow }}>
+            <ListItem
+              icon={LogOut}
+              title="Log Out"
+              danger
+              last
+              onPress={() => confirmAction("Log out?", "You'll need to sign in again to review documents.", "Log Out", signOut)}
+            />
+          </View>
+
+          <Text style={{ fontSize: 12, color: T.medium, fontFamily: FONT, textAlign: "center" }}>
+            PawMatch Veterinarian Portal • Version {version} (beta)
+          </Text>
         </View>
       </ScrollView>
     </View>

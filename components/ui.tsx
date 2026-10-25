@@ -1,12 +1,16 @@
 import { StatusBar } from "expo-status-bar";
-import { AlertCircle, ArrowLeft, Eye, EyeOff, Moon, PawPrint, Star, Sun } from "lucide-react-native";
-import { type ComponentType, type ReactNode, useState } from "react";
+import * as WebBrowser from "expo-web-browser";
+import { AlertCircle, ArrowLeft, ChevronRight, Eye, EyeOff, Moon, PawPrint, Star, Sun } from "lucide-react-native";
+import { type ComponentType, type ReactNode, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   Image,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
   Platform,
   Pressable,
+  ScrollView,
   type StyleProp,
   Switch,
   Text,
@@ -567,11 +571,54 @@ export function Tag({ label, tone = "neutral" }: { label: string; tone?: Tone | 
 }
 
 /* ── Appearance ─────────────────────────────────────────────────── */
+// Screens remount when the theme changes (see app/index.tsx), which would jump
+// them back to the top. Screens with a DarkModeToggle remember their offset here.
+let lastScrollY = 0;
+let restoreScrollAfterThemeChange = false;
+
+/** ScrollView props that keep the scroll position across a theme switch. */
+export function useThemeScrollRestore() {
+  const ref = useRef<ScrollView>(null);
+  const [restoreY] = useState(() => (restoreScrollAfterThemeChange ? lastScrollY : 0));
+  const restoring = useRef(restoreY > 0);
+
+  useEffect(() => {
+    restoreScrollAfterThemeChange = false;
+    if (restoreY <= 0) return;
+    restoring.current = true;
+    const jump = () => ref.current?.scrollTo({ y: restoreY, animated: false });
+    // Layout can settle over several frames (especially on web), so retry briefly.
+    const timers = [0, 50, 150, 300].map((ms) => setTimeout(jump, ms));
+    const done = setTimeout(() => {
+      restoring.current = false;
+    }, 400);
+    return () => {
+      timers.forEach(clearTimeout);
+      clearTimeout(done);
+    };
+  }, [restoreY]);
+
+  return {
+    ref,
+    scrollEventThrottle: 16,
+    onScroll: (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      // Ignore the remounted view's initial offset of 0 until it has been restored.
+      if (!restoring.current) lastScrollY = e.nativeEvent.contentOffset.y;
+    },
+    onContentSizeChange: () => {
+      if (restoring.current) ref.current?.scrollTo({ y: restoreY, animated: false });
+    },
+  };
+}
+
 /** "Dark Mode" row with an on / off switch for Settings screens. */
 export function DarkModeToggle() {
   const { preference, scheme, setPreference } = useThemePreference();
   const on = scheme === "dark";
-  const toggle = () => setPreference(on ? "light" : "dark");
+  const toggle = () => {
+    restoreScrollAfterThemeChange = true;
+    setPreference(on ? "light" : "dark");
+  };
   const Icon = on ? Moon : Sun;
   return (
     <Pressable
@@ -839,5 +886,58 @@ export function ListItem({
       </View>
       {right ?? (onPress ? <Text style={{ fontSize: 18, color: T.light }}>›</Text> : null)}
     </Pressable>
+  );
+}
+
+/* ── Settings screens ───────────────────────────────────────────── */
+export const PRIVACY_URL = "https://github.com/jade641/PawMatch/blob/main/PRIVACY.md";
+export const DATA_DELETION_URL = "https://github.com/jade641/PawMatch/blob/main/DATA_DELETION.md";
+
+export function openLink(url: string) {
+  WebBrowser.openBrowserAsync(url).catch(() => showMessage("Couldn't open link", url));
+}
+
+/** Labelled card of ListItems, e.g. "ACCOUNT". */
+export function SettingsGroup({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <View>
+      <Text style={{ fontSize: 12, color: T.medium, fontFamily: FONT_BOLD, letterSpacing: 0.8, marginBottom: 10, marginLeft: 4 }}>{title}</Text>
+      <View style={{ borderRadius: 18, overflow: "hidden", backgroundColor: T.white, ...shadow }}>{children}</View>
+    </View>
+  );
+}
+
+/** Account summary at the top of a Settings screen; opens Edit Profile. */
+export function SettingsProfileCard({ name, email, avatarUri, tag, onPress }: {
+  name: string;
+  email: string;
+  avatarUri: string | null;
+  tag?: ReactNode;
+  onPress: () => void;
+}) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.85}
+      accessibilityRole="button"
+      accessibilityLabel="Edit profile"
+      style={{ flexDirection: "row", alignItems: "center", gap: 14, padding: 16, borderRadius: 18, backgroundColor: T.white, ...shadow }}
+    >
+      <Avatar name={name} size={52} uri={avatarUri} />
+      <View style={{ flex: 1, gap: 2 }}>
+        <Text style={{ fontSize: 16, color: T.dark, fontFamily: FONT_BOLD }} numberOfLines={1}>{name}</Text>
+        <Text style={{ fontSize: 13, color: T.medium, fontFamily: FONT }} numberOfLines={1}>{email}</Text>
+        {tag ? <View style={{ marginTop: 4, alignSelf: "flex-start" }}>{tag}</View> : null}
+      </View>
+      <ChevronRight size={20} color={T.light} />
+    </TouchableOpacity>
+  );
+}
+
+export function CountBadge({ count }: { count: number }) {
+  return (
+    <View style={{ minWidth: 22, height: 22, paddingHorizontal: 6, borderRadius: 11, backgroundColor: T.primary, alignItems: "center", justifyContent: "center" }}>
+      <Text style={{ fontSize: 11, color: "#fff", fontFamily: FONT_BOLD }}>{count > 99 ? "99+" : count}</Text>
+    </View>
   );
 }
