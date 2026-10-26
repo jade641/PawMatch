@@ -6,9 +6,11 @@ import {
   Calendar,
   Camera,
   Check,
+  CheckCheck,
   CheckCircle,
   Clock,
   Crown,
+  EllipsisVertical,
   FileText,
   Heart,
   HelpCircle,
@@ -25,6 +27,7 @@ import {
   ShieldCheck,
   Star,
   Stethoscope,
+  Trash2,
   User,
   UserCheck,
   XCircle,
@@ -32,7 +35,9 @@ import {
 import { type ComponentType, useState } from "react";
 import {
   KeyboardAvoidingView,
+  Modal,
   Platform,
+  Pressable,
   RefreshControl,
   ScrollView,
   Text,
@@ -41,11 +46,13 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   DAVAO_DISTRICTS,
   DEFAULT_LOCATION,
   districtLocation,
   districtOf,
+  dropShadow,
   FONT,
   FONT_BOLD,
   FONT_MEDIUM,
@@ -66,6 +73,7 @@ import {
   Btn,
   Card,
   Chip,
+  confirmAction,
   DogImage,
   EmptyState,
   ErrorView,
@@ -335,9 +343,68 @@ export function NotificationBody({ n, compact }: { n: AppNotification; compact?:
   );
 }
 
+/** Bottom sheet with the actions for one notification (the ⋮ button). */
+function NotificationMenu({ n, onClose }: { n: AppNotification | null; onClose: () => void }) {
+  const { setNotificationRead, deleteNotification } = useApp();
+  const insets = useSafeAreaInsets();
+  if (!n) return null;
+
+  const toggleRead = () => {
+    onClose();
+    setNotificationRead(n, !n.read).catch((e) => showMessage("Couldn't update notification", api.errorMessage(e)));
+  };
+  const remove = () => {
+    onClose();
+    confirmAction(
+      "Delete notification?",
+      "This notification will be removed from your list.",
+      "Delete",
+      () => deleteNotification(n).catch((e) => showMessage("Couldn't delete notification", api.errorMessage(e))),
+      true,
+    );
+  };
+
+  const actions = [
+    { label: n.read ? "Mark as unread" : "Mark as read", Icon: n.read ? Mail : CheckCheck, color: T.dark, onPress: toggleRead },
+    { label: "Delete notification", Icon: Trash2, color: T.error, onPress: remove },
+  ];
+
+  return (
+    <Modal transparent visible animationType="fade" onRequestClose={onClose}>
+      <Pressable onPress={onClose} accessibilityLabel="Close menu" style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.35)", justifyContent: "flex-end" }}>
+        {/* Swallow taps on the sheet itself so only the backdrop closes it. */}
+        <Pressable
+          onPress={() => undefined}
+          style={{ backgroundColor: T.white, borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingTop: 10, paddingHorizontal: 12, paddingBottom: 12 + insets.bottom }}
+        >
+          <View style={{ alignSelf: "center", width: 40, height: 4, borderRadius: 2, backgroundColor: T.border, marginBottom: 10 }} />
+          <Text style={{ fontSize: 14, color: T.medium, fontFamily: FONT_MEDIUM, paddingHorizontal: 8, marginBottom: 6 }} numberOfLines={1}>
+            {n.title}
+          </Text>
+          {actions.map(({ label, Icon, color, onPress }) => (
+            <TouchableOpacity
+              key={label}
+              onPress={onPress}
+              accessibilityRole="button"
+              style={{ flexDirection: "row", alignItems: "center", gap: 14, paddingVertical: 14, paddingHorizontal: 8, borderRadius: 12 }}
+            >
+              <Icon size={20} color={color} strokeWidth={2} />
+              <Text style={{ fontSize: 15, color, fontFamily: FONT_BOLD }}>{label}</Text>
+            </TouchableOpacity>
+          ))}
+          <Btn title="Cancel" variant="outline" onPress={onClose} style={{ marginTop: 6 }} />
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
 export function NotificationsScreen() {
   const { goBack, canGoBack, notifications, markAllRead, openNotification, reloadNotifications, unreadCount } = useApp();
   const [refreshing, setRefreshing] = useState(false);
+  const [menuFor, setMenuFor] = useState<AppNotification | null>(null);
+  const [filter, setFilter] = useState<"all" | "unread">("all");
+  const shown = filter === "unread" ? notifications.filter((n) => !n.read) : notifications;
 
   const refresh = async () => {
     setRefreshing(true);
@@ -355,20 +422,50 @@ export function NotificationsScreen() {
           unreadCount > 0 ? <HeaderAction icon={Check} label="Mark all read" onPress={markAllRead} /> : undefined
         }
       />
+      <SegmentedTabs
+        tabs={[
+          { id: "all", label: "All" },
+          { id: "unread", label: unreadCount > 0 ? `Unread (${unreadCount})` : "Unread" },
+        ]}
+        value={filter}
+        onChange={setFilter}
+        style={{ marginBottom: 0 }}
+      />
       <ScrollView
         contentContainerStyle={{ padding: 20, gap: 10, paddingBottom: 32 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={T.primary} />}
       >
-        {notifications.length === 0 ? (
-          <EmptyState icon={Bell} title="No Notifications" message="You're all caught up! Match requests, messages and verification results will appear here." />
+        {shown.length === 0 ? (
+          filter === "unread" && notifications.length > 0 ? (
+            <EmptyState icon={CheckCircle} title="No Unread Notifications" message="You're all caught up! Switch to All to see earlier notifications." />
+          ) : (
+            <EmptyState icon={Bell} title="No Notifications" message="You're all caught up! Match requests, messages and verification results will appear here." />
+          )
         ) : (
-          notifications.map((n) => (
-            <Card key={n.id} onPress={() => openNotification(n)} style={{ flexDirection: "row", gap: 12, alignItems: "flex-start", backgroundColor: n.read ? T.white : T.highlight }}>
-              <NotificationBody n={n} />
+          shown.map((n) => (
+            // The row and the ⋮ button are siblings: a button can't sit inside another button on web.
+            <Card key={n.id} style={{ flexDirection: "row", alignItems: "flex-start", padding: 0, backgroundColor: n.read ? T.white : T.highlight }}>
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={() => openNotification(n)}
+                accessibilityRole="button"
+                style={{ flex: 1, flexDirection: "row", gap: 12, alignItems: "flex-start", paddingVertical: 16, paddingLeft: 16 }}
+              >
+                <NotificationBody n={n} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setMenuFor(n)}
+                accessibilityRole="button"
+                accessibilityLabel={`More options for ${n.title}`}
+                style={{ paddingTop: 16, paddingBottom: 12, paddingLeft: 8, paddingRight: 12 }}
+              >
+                <EllipsisVertical size={18} color={T.medium} strokeWidth={2} />
+              </TouchableOpacity>
             </Card>
           ))
         )}
       </ScrollView>
+      <NotificationMenu n={menuFor} onClose={() => setMenuFor(null)} />
     </View>
   );
 }
@@ -524,11 +621,7 @@ export function EditProfileScreen() {
               padding: 5,
               borderRadius: 60,
               backgroundColor: T.white,
-              shadowColor: "#000",
-              shadowOffset: { width: 0, height: 10 },
-              shadowOpacity: 0.12,
-              shadowRadius: 20,
-              elevation: 8,
+              ...dropShadow(10, 20, 0.12),
             }}
           >
             <Avatar name={name.trim() || session.user.full_name} size={100} uri={photo?.uri ?? currentPhoto} />

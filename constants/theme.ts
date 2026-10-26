@@ -100,13 +100,24 @@ export const FONT = "Roboto_400Regular";
 export const FONT_MEDIUM = "Roboto_500Medium";
 export const FONT_BOLD = "Roboto_700Bold";
 
-export const shadow = {
-  shadowColor: "#000",
-  shadowOffset: { width: 0, height: 2 },
-  shadowOpacity: 0.08,
-  shadowRadius: 8,
-  elevation: 2,
-} as const;
+/**
+ * Drop shadow as a `boxShadow` style, which works on iOS, Android and web.
+ * (React Native Web deprecates the old shadowColor / shadowOffset / ... props.)
+ */
+export function dropShadow(offsetY: number, blur: number, opacity: number, color = "#000") {
+  return { boxShadow: `0px ${offsetY}px ${blur}px ${withAlpha(color, opacity)}` };
+}
+
+/** "#RGB" / "#RRGGBB" with an opacity as rgba(); other colors are returned unchanged. */
+function withAlpha(color: string, opacity: number) {
+  const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(color)?.[1];
+  if (!hex) return color;
+  const full = hex.length === 3 ? hex.replace(/./g, "$&$&") : hex;
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(full.slice(i, i + 2), 16));
+  return `rgba(${r}, ${g}, ${b}, ${opacity})`;
+}
+
+export const shadow = dropShadow(2, 8, 0.08);
 
 /* ── Localisation: Davao City districts ────────────────────────── */
 export const DAVAO_DISTRICTS = [

@@ -73,6 +73,8 @@ interface AppContextValue {
   lastNotification: AppNotification | null;
   reloadNotifications: () => Promise<void>;
   markAllRead: () => Promise<void>;
+  setNotificationRead: (n: AppNotification, read: boolean) => Promise<void>;
+  deleteNotification: (n: AppNotification) => Promise<void>;
   openNotification: (n: AppNotification) => void;
 
   toast: Toast | null;
@@ -295,6 +297,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
     await api.markNotificationsRead().catch(() => undefined);
   }, []);
 
+  /** Optimistic; the list goes back to its previous state if the change fails. */
+  const setNotificationRead = useCallback(async (n: AppNotification, read: boolean) => {
+    setNotifications((list) => list.map((x) => (x.id === n.id ? { ...x, read } : x)));
+    try {
+      await (read ? api.markNotificationsRead([n.id]) : api.markNotificationUnread(n.id));
+    } catch (e) {
+      setNotifications((list) => list.map((x) => (x.id === n.id ? { ...x, read: n.read } : x)));
+      throw e;
+    }
+  }, []);
+
+  const deleteNotification = useCallback(async (n: AppNotification) => {
+    setNotifications((list) => list.filter((x) => x.id !== n.id));
+    try {
+      await api.deleteNotification(n.id);
+    } catch (e) {
+      setNotifications((list) => [...list, n].sort((a, b) => b.created_at.localeCompare(a.created_at)));
+      throw e;
+    }
+  }, []);
+
   const openNotification = useCallback(
     (n: AppNotification) => {
       if (!n.read) {
@@ -371,6 +394,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     lastNotification,
     reloadNotifications,
     markAllRead,
+    setNotificationRead,
+    deleteNotification,
     openNotification,
     toast,
     showToast,

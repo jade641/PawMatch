@@ -14,7 +14,7 @@ import {
 import { type ComponentType, type ReactNode, useEffect, useState } from "react";
 import { Animated, BackHandler, Platform, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { FONT, FONT_BOLD, FONT_MEDIUM, T } from "../constants/theme";
+import { dropShadow, FONT, FONT_BOLD, FONT_MEDIUM, T } from "../constants/theme";
 import { isVetPortal, useApp } from "../contexts/AppContext";
 import type { Screen } from "../types";
 
@@ -217,10 +217,6 @@ const makeStyles = () => ({
     borderRadius: 14,
     backgroundColor: T.white,
     borderLeftWidth: 4,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 8,
+    ...dropShadow(4, 12, 0.15),
   },
 } as const);

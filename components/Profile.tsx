@@ -40,6 +40,7 @@ import { KeyboardAvoidingView, Platform, ScrollView, Text, TouchableOpacity, Vie
 import {
   capitalize,
   DOC_TYPES,
+  dropShadow,
   FONT,
   FONT_BOLD,
   FONT_MEDIUM,
@@ -540,11 +541,7 @@ function DogForm({ existing }: { existing?: Dog }) {
                 borderRadius: 40,
                 backgroundColor: T.white,
                 padding: 5,
-                shadowColor: "#000",
-                shadowOffset: { width: 0, height: 10 },
-                shadowOpacity: 0.12,
-                shadowRadius: 20,
-                elevation: 8,
+                ...dropShadow(10, 20, 0.12),
               }}
             >
               {preview ? (

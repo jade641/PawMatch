@@ -807,6 +807,16 @@ export async function markNotificationsRead(ids?: number[]) {
   if (error) fail(error);
 }
 
+export async function markNotificationUnread(id: number) {
+  const { error } = await supabase.from("notifications").update({ read: false }).eq("id", id);
+  if (error) fail(error);
+}
+
+export async function deleteNotification(id: number) {
+  const { error } = await supabase.from("notifications").delete().eq("id", id);
+  if (error) fail(error);
+}
+
 export function subscribeToNotifications(userId: string, onInsert: (n: AppNotification) => void) {
   return subscribe("notifications", "notifications", "INSERT", `user_id=eq.${userId}`, onInsert);
 }

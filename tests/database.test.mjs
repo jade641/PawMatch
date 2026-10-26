@@ -451,6 +451,12 @@ await step("notifications: user can only mark own as read", async () => {
   await asFails(A, "insert into public.notifications (user_id, type, title) values ($1, 'system', 'fake')", [B], /permission denied/);
   await asFails(A, "select public.notify($1, 'system', 'x', 'y')", [B], /permission denied/);
   assert.equal((await as(A, "select id from public.notifications where user_id <> $1", [A])).length, 0);
+  // The ⋮ menu: mark unread and delete only touch the user's own notifications.
+  const [mine] = await as(A, "select id from public.notifications order by id limit 1");
+  assert.equal((await as(A, "update public.notifications set read = false where id=$1 returning id", [mine.id])).length, 1);
+  const [theirs] = await su("select id from public.notifications where user_id <> $1 limit 1", [A]);
+  assert.equal((await as(A, "delete from public.notifications where id=$1 returning id", [theirs.id])).length, 0);
+  assert.equal((await as(A, "delete from public.notifications where id=$1 returning id", [mine.id])).length, 1);
 });
 
 await step("internal helpers are not callable by clients", async () => {

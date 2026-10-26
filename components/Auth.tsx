@@ -47,6 +47,7 @@ import {
   DAVAO_DISTRICTS,
   DEFAULT_LOCATION,
   districtLocation,
+  dropShadow,
   FONT,
   FONT_BOLD,
   FONT_MEDIUM,
@@ -265,11 +266,7 @@ function FloatingChip({ chip, color, delay, style }: {
           paddingHorizontal: 14,
           borderRadius: 16,
           backgroundColor: T.white,
-          shadowColor: color,
-          shadowOffset: { width: 0, height: 8 },
-          shadowOpacity: 0.18,
-          shadowRadius: 16,
-          elevation: 6,
+          ...dropShadow(8, 16, 0.18, color),
           transform: [{ translateY }],
         },
         style,
@@ -310,11 +307,7 @@ function LandingSlide({ content, width, index, scrollX }: {
             alignItems: "center",
             justifyContent: "center",
             transform: [{ rotate: "-8deg" }],
-            shadowColor: content.color,
-            shadowOffset: { width: 0, height: 14 },
-            shadowOpacity: 0.35,
-            shadowRadius: 24,
-            elevation: 10,
+            ...dropShadow(14, 24, 0.35, content.color),
           }}
         >
           <View style={{ transform: [{ rotate: "8deg" }] }}>
@@ -441,11 +434,7 @@ export function Landing() {
             alignItems: "center",
             justifyContent: "center",
             gap: 10,
-            shadowColor: accent,
-            shadowOffset: { width: 0, height: 10 },
-            shadowOpacity: 0.3,
-            shadowRadius: 18,
-            elevation: 6,
+            ...dropShadow(10, 18, 0.3, accent),
           }}
         >
           <Text style={{ fontSize: 17, color: "#fff", fontFamily: FONT_BOLD }}>{last ? "Get Started" : "Next"}</Text>
@@ -506,11 +495,7 @@ function AuthShell({ title, subtitle, onBack, children, footer }: {
             padding: 22,
             borderRadius: 24,
             backgroundColor: T.white,
-            shadowColor: "#000",
-            shadowOffset: { width: 0, height: 10 },
-            shadowOpacity: 0.08,
-            shadowRadius: 24,
-            elevation: 6,
+            ...dropShadow(10, 24, 0.08),
           }}
         >
           {children}
@@ -540,11 +525,7 @@ function AuthButton({ title, loading, onPress, style }: { title: string; loading
           justifyContent: "center",
           gap: 10,
           opacity: loading ? 0.8 : 1,
-          shadowColor: T.primary,
-          shadowOffset: { width: 0, height: 10 },
-          shadowOpacity: 0.3,
-          shadowRadius: 18,
-          elevation: 6,
+          ...dropShadow(10, 18, 0.3, T.primary),
         },
         style,
       ]}

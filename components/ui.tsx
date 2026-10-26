@@ -22,7 +22,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
-import { BRAND, FONT, FONT_BOLD, FONT_MEDIUM, initials, shadow, T, type Tone } from "../constants/theme";
+import { BRAND, dropShadow, FONT, FONT_BOLD, FONT_MEDIUM, initials, shadow, T, type Tone } from "../constants/theme";
 import { useThemePreference } from "../contexts/ThemeContext";
 
 type IconType = ComponentType<{ size?: number; color?: string; strokeWidth?: number; fill?: string }>;
@@ -431,7 +431,7 @@ export function Btn({
           gap: hero ? 10 : 8,
           opacity: disabled ? 0.5 : loading && hero ? 0.8 : 1,
         },
-        hero && { shadowColor: c.bg, shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.3, shadowRadius: 18, elevation: 6 },
+        hero && dropShadow(10, 18, 0.3, c.bg),
         style,
       ]}
     >

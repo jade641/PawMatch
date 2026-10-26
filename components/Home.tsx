@@ -18,7 +18,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { RefreshControl, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { BRAND, capitalize, districtOf, FONT, FONT_BOLD, oppositeSex, shadow, T } from "../constants/theme";
+import { BRAND, capitalize, districtOf, dropShadow, FONT, FONT_BOLD, oppositeSex, shadow, T } from "../constants/theme";
 import { useApp, useSession } from "../contexts/AppContext";
 import { useAsync } from "../hooks/useAsync";
 import * as api from "../services/api";
@@ -200,11 +200,7 @@ export function HomeScreen() {
             borderRadius: 22,
             backgroundColor: T.white,
             paddingVertical: 16,
-            shadowColor: "#000",
-            shadowOffset: { width: 0, height: 10 },
-            shadowOpacity: 0.08,
-            shadowRadius: 20,
-            elevation: 6,
+            ...dropShadow(10, 20, 0.08),
           }}
         >
           {stats.map((s, i) => (
