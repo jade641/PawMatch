@@ -7,6 +7,7 @@ import { supabase } from "../lib/supabase";
 import type {
   AppNotification,
   AuditEntry,
+  BlockedUser,
   DocType,
   Dog,
   DogInput,
@@ -14,11 +15,14 @@ import type {
   Message,
   OwnerProfile,
   RankedMatch,
+  ReportReason,
+  ReportStatus,
   Review,
   Session,
   Sex,
   Size,
   Submission,
+  UserReport,
   VerifierApplication,
   VerifierProfile,
   VerifierRole,
@@ -63,6 +67,10 @@ function friendlyMessage(error: unknown): string {
     return "There is already an active request between these two dogs.";
   }
   if (/duplicate key.*reviews/i.test(message)) return "You already reviewed this match.";
+  if (/duplicate key.*user_reports/i.test(message)) {
+    return "You already reported this user. The PawMatch team will review it soon.";
+  }
+  if (/duplicate key.*user_blocks/i.test(message)) return "You already blocked this user.";
   return message;
 }
 
@@ -759,6 +767,67 @@ export async function reviewVerifier(id: string, decision: "approve" | "reject",
     p_decision: decision,
     p_notes: notes,
   });
+  if (error) fail(error);
+}
+
+/* ── Safety: blocking and reporting ─────────────────────────────────── */
+
+/** Blocking hides both users' dogs from each other and closes their active requests. */
+export async function blockUser(userId: string) {
+  const { error } = await supabase.from("user_blocks").insert({ blocked_id: userId });
+  if (error) fail(error);
+}
+
+export async function unblockUser(userId: string) {
+  const { error } = await supabase.from("user_blocks").delete().eq("blocked_id", userId);
+  if (error) fail(error);
+}
+
+/** Whether the signed-in user has blocked this user (blocks made by others stay private). */
+export async function hasBlocked(userId: string): Promise<boolean> {
+  const { data, error } = await supabase.from("user_blocks").select("blocked_id").eq("blocked_id", userId).maybeSingle();
+  if (error) fail(error);
+  return !!data;
+}
+
+export async function listMyBlocks(): Promise<BlockedUser[]> {
+  const { data, error } = await supabase.rpc("list_my_blocks");
+  if (error) fail(error);
+  return (data ?? []) as BlockedUser[];
+}
+
+export interface ReportInput {
+  reportedId: string;
+  reason: ReportReason;
+  details: string;
+  matchRequestId?: number;
+  dogId?: string;
+}
+
+export async function reportUser(input: ReportInput) {
+  const { error } = await supabase.from("user_reports").insert({
+    reported_id: input.reportedId,
+    reason: input.reason,
+    details: input.details.trim(),
+    match_request_id: input.matchRequestId ?? null,
+    dog_id: input.dogId ?? null,
+  });
+  if (error) fail(error);
+}
+
+export async function listReports(): Promise<UserReport[]> {
+  const { data, error } = await supabase.rpc("admin_list_reports");
+  if (error) fail(error);
+  return ((data ?? []) as UserReport[]).map((r) => ({
+    ...r,
+    id: Number(r.id),
+    reported_report_count: Number(r.reported_report_count),
+    match_request_id: r.match_request_id == null ? null : Number(r.match_request_id),
+  }));
+}
+
+export async function reviewReport(id: number, status: Exclude<ReportStatus, "open">, notes: string) {
+  const { error } = await supabase.rpc("admin_review_report", { p_report_id: id, p_status: status, p_notes: notes });
   if (error) fail(error);
 }
 

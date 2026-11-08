@@ -179,6 +179,7 @@ export type NotificationType =
   | "match_alert"
   | "verifier_application"
   | "verifier_review"
+  | "user_report"
   | "system";
 
 export interface AppNotification {
@@ -201,6 +202,40 @@ export interface AuditEntry {
   action: "submitted" | "approved" | "rejected" | "tier_changed";
   details: string;
   created_at: string;
+}
+
+export type ReportReason = "scam" | "harassment" | "fake_profile" | "fake_documents" | "animal_welfare" | "spam" | "other";
+export type ReportStatus = "open" | "resolved" | "dismissed";
+
+/** Someone the signed-in user has blocked (list_my_blocks). */
+export interface BlockedUser {
+  blocked_id: string;
+  full_name: string;
+  avatar_url: string | null;
+  created_at: string;
+}
+
+/** A report as seen by admins (admin_list_reports). */
+export interface UserReport {
+  id: number;
+  reason: ReportReason;
+  details: string;
+  status: ReportStatus;
+  admin_notes: string | null;
+  created_at: string;
+  reviewed_at: string | null;
+  reviewer_name: string | null;
+  reporter_id: string;
+  reporter_name: string;
+  reporter_email: string;
+  reported_id: string;
+  reported_name: string;
+  reported_email: string;
+  reported_phone: string | null;
+  reported_report_count: number;
+  match_request_id: number | null;
+  dog_id: string | null;
+  dog_name: string | null;
 }
 
 export interface RankedMatch {
@@ -253,4 +288,7 @@ export type Screen =
   | "vet-settings"
   | "vet-professional"
   | "admin-verifiers"
-  | "admin-verifier-detail";
+  | "admin-verifier-detail"
+  | "admin-reports"
+  | "admin-report-detail"
+  | "blocked-users";

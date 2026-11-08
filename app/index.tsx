@@ -1,5 +1,5 @@
 import { Fragment, type ReactNode } from "react";
-import { AdminVerifierDetail, AdminVerifiers } from "../components/Admin";
+import { AdminReportDetail, AdminReports, AdminVerifierDetail, AdminVerifiers } from "../components/Admin";
 import { BootScreen, ForgotPassword, Landing, Login, Register, ResetPassword, SetupRequired, VerifyEmail } from "../components/Auth";
 import {
   ChangePasswordScreen,
@@ -11,6 +11,7 @@ import {
 import { ConversationScreen, RequestsScreen } from "../components/Conversation";
 import { FilterScreen, HomeScreen, MatchScreen } from "../components/Home";
 import { AddDog, DogProfile, EditDog, MatchProfileScreen, OwnerProfile, OwnerSettings, SendRequest } from "../components/Profile";
+import { BlockedUsersScreen } from "../components/Safety";
 import { Loading } from "../components/ui";
 import { AuditTrailScreen, VerifyChoose, VerifyStatus, VerifyUpload } from "../components/Verify";
 import {
@@ -70,6 +71,8 @@ const VET_SCREENS: Partial<Record<Screen, () => ReactNode>> = {
 const ADMIN_SCREENS: Partial<Record<Screen, () => ReactNode>> = {
   "admin-verifiers": () => <AdminVerifiers />,
   "admin-verifier-detail": () => <AdminVerifierDetail />,
+  "admin-reports": () => <AdminReports />,
+  "admin-report-detail": () => <AdminReportDetail />,
 };
 
 const SHARED_SCREENS: Partial<Record<Screen, () => ReactNode>> = {
@@ -78,6 +81,7 @@ const SHARED_SCREENS: Partial<Record<Screen, () => ReactNode>> = {
   "edit-profile": () => <EditProfileScreen />,
   "change-password": () => <ChangePasswordScreen />,
   "audit-trail": () => <AuditTrailScreen />,
+  "blocked-users": () => <BlockedUsersScreen />,
 };
 
 function PageRenderer() {

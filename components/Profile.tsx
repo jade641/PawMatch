@@ -16,7 +16,6 @@ import {
   HelpCircle,
   KeyRound,
   Lock,
-  LogOut,
   Mars,
   MapPin,
   MessageSquare,
@@ -32,6 +31,7 @@ import {
   Trash2,
   Upload,
   User,
+  UserX,
   Venus,
   X,
 } from "lucide-react-native";
@@ -61,6 +61,7 @@ import { pickImage, type PickedFile } from "../services/media";
 import type { Dog, Sex, Size } from "../types";
 import { BreedInput, ColorCombobox, MyDogSelector, TemperamentPicker, TemperamentTags, TrustIndicators } from "./DogWidgets";
 import { CompatibilityBreakdownCard } from "./FloatingMatchResults";
+import { SafetyMenuButton } from "./Safety";
 import {
   Avatar,
   Btn,
@@ -77,6 +78,7 @@ import {
   HeroIconButton,
   InfoRow,
   ListItem,
+  LogOutItem,
   Loading,
   openLink,
   PRIVACY_URL,
@@ -1017,19 +1019,12 @@ export function OwnerSettings() {
 
           <SettingsGroup title="SUPPORT & PRIVACY">
             <ListItem icon={HelpCircle} title="Help & About" subtitle="How matching and verification work, contact support" onPress={() => navigate("settings")} />
+            <ListItem icon={UserX} title="Blocked Users" subtitle="People you've blocked from chats and profiles" onPress={() => navigate("blocked-users")} />
             <ListItem icon={Lock} title="Privacy Policy" subtitle="What we collect and how it's used" onPress={() => openLink(PRIVACY_URL)} />
             <ListItem icon={Trash2} title="Delete Account & Data" subtitle="How to request deletion of your data" onPress={() => openLink(DATA_DELETION_URL)} last />
           </SettingsGroup>
 
-          <View style={{ borderRadius: 18, overflow: "hidden", ...shadow }}>
-            <ListItem
-              icon={LogOut}
-              title="Log Out"
-              danger
-              last
-              onPress={() => confirmAction("Log out?", "You'll need to sign in again to use PawMatch.", "Log Out", signOut)}
-            />
-          </View>
+          <LogOutItem message="You'll need to sign in again to see your dogs, matches and messages." onLogOut={signOut} />
 
           <Text style={{ fontSize: 12, color: T.medium, fontFamily: FONT, textAlign: "center" }}>
             PawMatch Mobile • Version {version} (beta)
@@ -1072,7 +1067,16 @@ export function MatchProfileScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: T.bg }}>
-      <Header title={`${d.name}'s Profile`} icon={PawPrint} onBack={goBack} />
+      <Header
+        title={`${d.name}'s Profile`}
+        icon={PawPrint}
+        onBack={goBack}
+        right={
+          !isMine && d.owner ? (
+            <SafetyMenuButton target={{ userId: d.owner_id, name: d.owner.display_name, dogId: d.id }} onBlocked={goBack} />
+          ) : undefined
+        }
+      />
       <ScrollView contentContainerStyle={{ paddingBottom: 32 }}>
         <DogHeaderBlock dog={d} />
         <View style={{ padding: 20, gap: 14 }}>

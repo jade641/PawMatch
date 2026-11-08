@@ -1,17 +1,73 @@
-import { CheckCircle, Mail, Phone, Search, ShieldCheck, ShieldOff, UserCheck, XCircle } from "lucide-react-native";
+import { CheckCircle, Flag, Mail, Phone, Search, ShieldCheck, ShieldOff, UserCheck, XCircle } from "lucide-react-native";
 import { useState } from "react";
 import { KeyboardAvoidingView, Linking, Platform, RefreshControl, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
-import { APPLICATION_STATUS, applicationStatus, FONT, FONT_BOLD, FONT_MEDIUM, formatDate, T, timeAgo } from "../constants/theme";
+import {
+  APPLICATION_STATUS,
+  applicationStatus,
+  FONT,
+  FONT_BOLD,
+  FONT_MEDIUM,
+  formatDate,
+  REPORT_STATUS,
+  reportReasonLabel,
+  T,
+  timeAgo,
+} from "../constants/theme";
 import { useApp, useSession } from "../contexts/AppContext";
 import { useAsync } from "../hooks/useAsync";
 import * as api from "../services/api";
-import type { ApplicationStatus, VerifierApplication } from "../types";
+import type { ApplicationStatus, ReportStatus, UserReport, VerifierApplication } from "../types";
 import { Avatar, Btn, Card, confirmAction, EmptyState, ErrorView, Header, InfoRow, Loading, SectionTitle, showMessage, Tag } from "./ui";
 
 /** All applications, refreshed when an admin alert arrives. */
 function useApplications() {
   const { lastNotification } = useApp();
   return useAsync(() => api.listVerifierApplications(), [lastNotification?.id]);
+}
+
+/** All user reports, refreshed when an admin alert arrives. */
+function useReports() {
+  const { lastNotification } = useApp();
+  return useAsync(() => api.listReports(), [lastNotification?.id]);
+}
+
+/** Switches the Admin tab between verifier applications and user reports. */
+function AdminSwitcher({ current }: { current: "admin-verifiers" | "admin-reports" }) {
+  const { replace } = useApp();
+  const items = [
+    { id: "admin-verifiers" as const, label: "Applications", Icon: UserCheck },
+    { id: "admin-reports" as const, label: "Reports", Icon: Flag },
+  ];
+  return (
+    <View style={{ flexDirection: "row", gap: 8, paddingHorizontal: 20, paddingTop: 12, backgroundColor: T.white }}>
+      {items.map(({ id, label, Icon }) => {
+        const active = id === current;
+        return (
+          <TouchableOpacity
+            key={id}
+            onPress={() => !active && replace(id)}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: active }}
+            style={{
+              flex: 1,
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 6,
+              paddingVertical: 10,
+              borderRadius: 12,
+              borderWidth: 1.5,
+              borderColor: active ? T.primary : T.border,
+              backgroundColor: active ? T.primaryLight : T.white,
+            }}
+          >
+            <Icon size={15} color={active ? T.primaryDark : T.medium} strokeWidth={2} />
+            <Text style={{ fontSize: 13, color: active ? T.primaryDark : T.medium, fontFamily: FONT_BOLD }}>{label}</Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
 }
 
 function ApplicationCard({ a }: { a: VerifierApplication }) {
@@ -61,6 +117,7 @@ export function AdminVerifiers() {
   return (
     <View style={{ flex: 1, backgroundColor: T.bg }}>
       <Header title="Verifier Applications" subtitle="Veterinarians and breeders" icon={ShieldCheck} onBack={canGoBack ? goBack : undefined} />
+      <AdminSwitcher current="admin-verifiers" />
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0, backgroundColor: T.white }} contentContainerStyle={{ gap: 8, padding: 12, paddingHorizontal: 20 }}>
         {filters.map((f) => (
           <TouchableOpacity
@@ -272,6 +329,240 @@ export function AdminVerifierDetail() {
             )}
           </Card>
         )}
+      </ScrollView>
+    </KeyboardAvoidingView>
+  );
+}
+
+/* ── User reports ───────────────────────────────────────────────── */
+function ReportCard({ r }: { r: UserReport }) {
+  const { navigate } = useApp();
+  const status = REPORT_STATUS[r.status];
+  return (
+    <Card onPress={() => navigate("admin-report-detail", { reportId: r.id })} style={{ flexDirection: "row", gap: 12 }}>
+      <Avatar name={r.reported_name} size={48} />
+      <View style={{ flex: 1, gap: 2 }}>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+          <Text style={{ fontSize: 15, color: T.dark, fontFamily: FONT_BOLD, flexShrink: 1 }} numberOfLines={1}>
+            {r.reported_name}
+          </Text>
+          <Tag label={status.label} tone={status.tone} />
+        </View>
+        <Text style={{ fontSize: 13, color: T.dark, fontFamily: FONT_MEDIUM }} numberOfLines={1}>
+          {reportReasonLabel(r.reason)}
+        </Text>
+        <Text style={{ fontSize: 12, color: T.medium, fontFamily: FONT }} numberOfLines={1}>
+          Reported by {r.reporter_name}
+          {r.reported_report_count > 1 ? ` • ${r.reported_report_count} reports in total` : ""}
+        </Text>
+        <Text style={{ fontSize: 11, color: T.light, fontFamily: FONT }}>{timeAgo(r.created_at)}</Text>
+      </View>
+    </Card>
+  );
+}
+
+export function AdminReports() {
+  const { goBack, canGoBack } = useApp();
+  const reports = useReports();
+  const [filter, setFilter] = useState<"all" | ReportStatus>("open");
+  const all = reports.data ?? [];
+  const list = all.filter((r) => filter === "all" || r.status === filter);
+  const filters: { id: "all" | ReportStatus; label: string }[] = [
+    { id: "open", label: "Open" },
+    { id: "resolved", label: "Resolved" },
+    { id: "dismissed", label: "Dismissed" },
+    { id: "all", label: "All" },
+  ];
+
+  return (
+    <View style={{ flex: 1, backgroundColor: T.bg }}>
+      <Header title="User Reports" subtitle="Reported owners and conversations" icon={Flag} onBack={canGoBack ? goBack : undefined} />
+      <AdminSwitcher current="admin-reports" />
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0, backgroundColor: T.white }} contentContainerStyle={{ gap: 8, padding: 12, paddingHorizontal: 20 }}>
+        {filters.map((f) => (
+          <TouchableOpacity
+            key={f.id}
+            onPress={() => setFilter(f.id)}
+            style={{ paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: filter === f.id ? T.primary : T.bg }}
+          >
+            <Text style={{ fontSize: 13, color: filter === f.id ? "#fff" : T.dark, fontFamily: FONT_BOLD }}>
+              {f.label}
+              {f.id !== "all" ? ` (${all.filter((r) => r.status === f.id).length})` : ""}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+      <ScrollView
+        contentContainerStyle={{ padding: 20, gap: 12, paddingBottom: 32 }}
+        refreshControl={<RefreshControl refreshing={false} onRefresh={() => reports.reload(true)} tintColor={T.primary} />}
+      >
+        {reports.loading ? (
+          <Loading />
+        ) : reports.error ? (
+          <ErrorView message={reports.error} onRetry={() => reports.reload()} />
+        ) : list.length === 0 ? (
+          <EmptyState
+            icon={Flag}
+            title={filter === "open" ? "No open reports" : "No reports found"}
+            message={filter === "open" ? "New reports from owners will appear here and you'll get an alert." : "Nothing matches this filter."}
+          />
+        ) : (
+          list.map((r) => <ReportCard key={r.id} r={r} />)
+        )}
+      </ScrollView>
+    </View>
+  );
+}
+
+export function AdminReportDetail() {
+  const { goBack, params, showToast } = useApp();
+  const session = useSession();
+  const reportId = Number(params.reportId);
+  const reports = useReports();
+  const [notes, setNotes] = useState("");
+  const [deciding, setDeciding] = useState<"resolved" | "dismissed" | null>(null);
+
+  const r = reports.data?.find((x) => x.id === reportId);
+
+  if (reports.loading || !r) {
+    return (
+      <View style={{ flex: 1, backgroundColor: T.bg }}>
+        <Header title="Report" onBack={goBack} />
+        {reports.loading ? <Loading /> : <ErrorView message={reports.error ?? "Report not found."} onRetry={() => reports.reload()} />}
+      </View>
+    );
+  }
+
+  const status = REPORT_STATUS[r.status];
+  const involved = session.user.id === r.reporter_id || session.user.id === r.reported_id;
+
+  const decide = (decision: "resolved" | "dismissed") => {
+    if (decision === "resolved" && !notes.trim()) {
+      showMessage("Remarks required", "Note what action was taken, e.g. warned the owner or removed a listing.");
+      return;
+    }
+    confirmAction(
+      decision === "resolved" ? "Mark as resolved?" : "Dismiss report?",
+      decision === "resolved"
+        ? `${r.reporter_name} will be told their report was reviewed.`
+        : `No action is taken against ${r.reported_name}. ${r.reporter_name} will be told their report was reviewed.`,
+      decision === "resolved" ? "Resolve" : "Dismiss",
+      async () => {
+        setDeciding(decision);
+        try {
+          await api.reviewReport(r.id, decision, notes);
+          showToast(decision === "resolved" ? "Report resolved" : "Report dismissed", "The reporter has been notified.", "success");
+          setNotes("");
+          await reports.reload(true);
+        } catch (e) {
+          showMessage("Couldn't save decision", api.errorMessage(e));
+        } finally {
+          setDeciding(null);
+        }
+      },
+    );
+  };
+
+  const openLink = (url: string) => Linking.openURL(url).catch(() => showMessage("Couldn't open", url.replace(/^\w+:/, "")));
+
+  return (
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: T.bg }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+      <Header title="Report" subtitle={reportReasonLabel(r.reason)} icon={Flag} onBack={goBack} />
+      <ScrollView
+        contentContainerStyle={{ padding: 20, gap: 16, paddingBottom: 40 }}
+        keyboardShouldPersistTaps="handled"
+        refreshControl={<RefreshControl refreshing={false} onRefresh={() => reports.reload(true)} tintColor={T.primary} />}
+      >
+        <Card style={{ alignItems: "center", gap: 4 }}>
+          <Avatar name={r.reported_name} size={72} />
+          <Text style={{ fontSize: 19, color: T.dark, fontFamily: FONT_BOLD, marginTop: 8, textAlign: "center" }}>{r.reported_name}</Text>
+          <Text style={{ fontSize: 13, color: T.medium, fontFamily: FONT }}>Reported user</Text>
+          <View style={{ flexDirection: "row", gap: 8, marginTop: 6 }}>
+            <Tag label={status.label} tone={status.tone} />
+            {r.reported_report_count > 1 ? <Tag label={`${r.reported_report_count} reports in total`} tone="danger" /> : null}
+          </View>
+        </Card>
+
+        <Card style={{ gap: 4 }}>
+          <SectionTitle title="What was reported" />
+          <InfoRow label="Reason" value={reportReasonLabel(r.reason)} />
+          <InfoRow label="Reported" value={formatDate(r.created_at)} />
+          {r.dog_name ? <InfoRow label="About dog" value={r.dog_name} /> : null}
+          <InfoRow label="Where" value={r.match_request_id ? "In a chat" : "From a profile"} last={!r.details} />
+          {r.details ? (
+            <Text style={{ fontSize: 14, color: T.dark, fontFamily: FONT, lineHeight: 20, marginTop: 8 }}>{r.details}</Text>
+          ) : null}
+        </Card>
+
+        <Card style={{ gap: 4 }}>
+          <SectionTitle title="Reported user" />
+          <InfoRow label="Email" value={r.reported_email} />
+          <InfoRow label="Phone" value={r.reported_phone ?? "—"} last />
+          <View style={{ flexDirection: "row", gap: 10, marginTop: 8 }}>
+            <Btn title="Email" icon={Mail} variant="outline" size="small" onPress={() => openLink(`mailto:${r.reported_email}`)} style={{ flex: 1 }} />
+            {r.reported_phone ? (
+              <Btn title="Call" icon={Phone} variant="outline" size="small" onPress={() => openLink(`tel:${r.reported_phone}`)} style={{ flex: 1 }} />
+            ) : null}
+          </View>
+        </Card>
+
+        <Card style={{ gap: 4 }}>
+          <SectionTitle title="Reported by" />
+          <InfoRow label="Name" value={r.reporter_name} />
+          <InfoRow label="Email" value={r.reporter_email} last />
+        </Card>
+
+        {r.reviewed_at && (
+          <Card style={{ gap: 6 }}>
+            <SectionTitle title="Decision" />
+            <Text style={{ fontSize: 14, color: T.dark, fontFamily: FONT_MEDIUM }}>
+              {status.label} on {formatDate(r.reviewed_at)}
+              {r.reviewer_name ? ` by ${r.reviewer_name}` : ""}
+            </Text>
+            {r.admin_notes ? <Text style={{ fontSize: 13, color: T.dark, fontFamily: FONT }}>Remarks: {r.admin_notes}</Text> : null}
+          </Card>
+        )}
+
+        {r.status === "open" &&
+          (involved ? (
+            <Card>
+              <Text style={{ fontSize: 13, color: T.medium, fontFamily: FONT, lineHeight: 19 }}>
+                You are part of this report. Another administrator has to review it.
+              </Text>
+            </Card>
+          ) : (
+            <Card style={{ gap: 12 }}>
+              <SectionTitle title="Your decision" />
+              <Text style={{ fontSize: 12, color: T.medium, fontFamily: FONT, lineHeight: 18 }}>
+                Contact the reported user if you need their side, then note what you did. The reporter only sees that the
+                report was reviewed, not your remarks.
+              </Text>
+              <TextInput
+                value={notes}
+                onChangeText={setNotes}
+                placeholder="Remarks (required when resolving) — e.g. warned the owner"
+                placeholderTextColor={T.light}
+                multiline
+                maxLength={1000}
+                style={{
+                  minHeight: 90,
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: T.border,
+                  backgroundColor: T.bg,
+                  padding: 12,
+                  fontSize: 14,
+                  color: T.dark,
+                  fontFamily: FONT,
+                  textAlignVertical: "top",
+                }}
+              />
+              <View style={{ flexDirection: "row", gap: 10 }}>
+                <Btn title="Resolve" icon={CheckCircle} loading={deciding === "resolved"} disabled={!!deciding} onPress={() => decide("resolved")} style={{ flex: 1 }} />
+                <Btn title="Dismiss" icon={XCircle} variant="outline" loading={deciding === "dismissed"} disabled={!!deciding} onPress={() => decide("dismissed")} style={{ flex: 1 }} />
+              </View>
+            </Card>
+          ))}
       </ScrollView>
     </KeyboardAvoidingView>
   );

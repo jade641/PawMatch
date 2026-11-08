@@ -1,4 +1,4 @@
-import type { ApplicationStatus, DocType, RequestStatus, Sex, Submission, SubmissionStatus } from "../types";
+import type { ApplicationStatus, DocType, ReportReason, ReportStatus, RequestStatus, Sex, Submission, SubmissionStatus } from "../types";
 
 /* ── Design tokens ─────────────────────────────────────────────── */
 export type ColorScheme = "light" | "dark";
@@ -177,6 +177,27 @@ export const APPLICATION_STATUS: Record<ApplicationStatus, { label: string; tone
   pending: { label: "Pending", tone: "warning" },
   approved: { label: "Approved", tone: "success" },
   rejected: { label: "Not Approved", tone: "danger" },
+};
+
+/** Same labels as public.report_reason_label() in the database. */
+export const REPORT_REASONS: { id: ReportReason; label: string }[] = [
+  { id: "scam", label: "Scam or fraud" },
+  { id: "harassment", label: "Harassment or abusive messages" },
+  { id: "fake_profile", label: "Fake profile or dog" },
+  { id: "fake_documents", label: "Fake health documents" },
+  { id: "animal_welfare", label: "Animal welfare concern" },
+  { id: "spam", label: "Spam" },
+  { id: "other", label: "Something else" },
+];
+
+export function reportReasonLabel(reason: ReportReason) {
+  return REPORT_REASONS.find((r) => r.id === reason)?.label ?? reason;
+}
+
+export const REPORT_STATUS: Record<ReportStatus, { label: string; tone: Tone }> = {
+  open: { label: "Open", tone: "warning" },
+  resolved: { label: "Resolved", tone: "success" },
+  dismissed: { label: "Dismissed", tone: "neutral" },
 };
 
 export function applicationStatus(v: { approved: boolean; reviewed_at: string | null }): ApplicationStatus {

@@ -32,7 +32,7 @@ const OWNER_TABS: Tab[] = [
   {
     icon: User,
     label: "Profile",
-    screens: ["owner-profile", "owner-settings", "reputation", "settings", "edit-profile", "change-password"],
+    screens: ["owner-profile", "owner-settings", "reputation", "settings", "edit-profile", "change-password", "blocked-users"],
   },
 ];
 
@@ -44,7 +44,11 @@ const VET_TABS: Tab[] = [
 ];
 
 /** Appended to the owner or vet tabs for administrators. */
-const ADMIN_TAB: Tab = { icon: ShieldCheck, label: "Admin", screens: ["admin-verifiers", "admin-verifier-detail"] };
+const ADMIN_TAB: Tab = {
+  icon: ShieldCheck,
+  label: "Admin",
+  screens: ["admin-verifiers", "admin-verifier-detail", "admin-reports", "admin-report-detail"],
+};
 
 /** Full-screen pages without the tab bar. */
 const NO_NAV: Screen[] = [

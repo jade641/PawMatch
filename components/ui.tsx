@@ -1,11 +1,12 @@
 import { StatusBar } from "expo-status-bar";
 import * as WebBrowser from "expo-web-browser";
-import { AlertCircle, ArrowLeft, ChevronRight, Eye, EyeOff, Moon, PawPrint, Star, Sun } from "lucide-react-native";
+import { AlertCircle, ArrowLeft, ChevronRight, Eye, EyeOff, LogOut, Moon, PawPrint, Star, Sun } from "lucide-react-native";
 import { type ComponentType, type ReactNode, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   Image,
+  Modal,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
   Platform,
@@ -904,6 +905,56 @@ export function SettingsGroup({ title, children }: { title: string; children: Re
       <Text style={{ fontSize: 12, color: T.medium, fontFamily: FONT_BOLD, letterSpacing: 0.8, marginBottom: 10, marginLeft: 4 }}>{title}</Text>
       <View style={{ borderRadius: 18, overflow: "hidden", backgroundColor: T.white, ...shadow }}>{children}</View>
     </View>
+  );
+}
+
+/** "Log Out" row for Settings screens. Asks first, so a mis-tap doesn't sign the user out. */
+export function LogOutItem({ message, onLogOut }: { message: string; onLogOut: () => Promise<void> }) {
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const logOut = async () => {
+    setBusy(true);
+    try {
+      await onLogOut();
+    } finally {
+      // Signing out leaves this screen; reset in case it stays mounted.
+      setBusy(false);
+      setOpen(false);
+    }
+  };
+
+  return (
+    <>
+      <View style={{ borderRadius: 18, overflow: "hidden", ...shadow }}>
+        <ListItem icon={LogOut} title="Log Out" danger last onPress={() => setOpen(true)} />
+      </View>
+
+      <Modal transparent visible={open} animationType="fade" onRequestClose={() => !busy && setOpen(false)}>
+        <Pressable
+          onPress={() => !busy && setOpen(false)}
+          accessibilityLabel="Cancel"
+          style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.45)", alignItems: "center", justifyContent: "center", padding: 28 }}
+        >
+          {/* Swallow taps on the card itself so only the backdrop cancels. */}
+          <Pressable
+            onPress={() => undefined}
+            accessibilityViewIsModal
+            style={{ width: "100%", maxWidth: 360, borderRadius: 24, backgroundColor: T.white, padding: 22, alignItems: "center", ...dropShadow(12, 28, 0.25) }}
+          >
+            <View style={{ width: 60, height: 60, borderRadius: 30, backgroundColor: T.errorLight, alignItems: "center", justifyContent: "center", marginBottom: 14 }}>
+              <LogOut size={28} color={T.error} strokeWidth={2} />
+            </View>
+            <Text style={{ fontSize: 19, color: T.dark, fontFamily: FONT_BOLD, textAlign: "center" }}>Log out of PawMatch?</Text>
+            <Text style={{ fontSize: 14, color: T.medium, fontFamily: FONT, textAlign: "center", lineHeight: 20, marginTop: 8 }}>{message}</Text>
+            <View style={{ flexDirection: "row", gap: 10, marginTop: 22, alignSelf: "stretch" }}>
+              <Btn title="Stay" variant="outline" onPress={() => setOpen(false)} disabled={busy} style={{ flex: 1 }} />
+              <Btn title="Log Out" icon={LogOut} variant="danger" loading={busy} onPress={logOut} style={{ flex: 1 }} />
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </>
   );
 }
 

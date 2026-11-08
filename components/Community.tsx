@@ -12,6 +12,7 @@ import {
   Crown,
   EllipsisVertical,
   FileText,
+  Flag,
   Heart,
   HelpCircle,
   Info,
@@ -68,6 +69,7 @@ import { pickImage, type PickedFile } from "../services/media";
 import { WEIGHTS } from "../services/compatibility";
 import type { AppNotification, Dog, NotificationType, OwnerProfile } from "../types";
 import { otherSide } from "./Conversation";
+import { SafetyMenuButton } from "./Safety";
 import {
   Avatar,
   Btn,
@@ -164,7 +166,12 @@ export function ReputationScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: T.bg }}>
-      <Header title="Reputation & History" icon={Star} onBack={canGoBack ? goBack : undefined} />
+      <Header
+        title="Reputation & History"
+        icon={Star}
+        onBack={canGoBack ? goBack : undefined}
+        right={isMe ? undefined : <SafetyMenuButton target={{ userId, name: o.display_name }} onBlocked={canGoBack ? goBack : undefined} />}
+      />
       <ScrollView
         contentContainerStyle={{ paddingBottom: 32 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={T.primary} />}
@@ -312,6 +319,7 @@ const NOTIFICATION_ICONS: Record<NotificationType, ComponentType<any>> = {
   match_alert: PawPrint,
   verifier_application: UserCheck,
   verifier_review: ShieldCheck,
+  user_report: Flag,
   system: Info,
 };
 

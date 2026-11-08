@@ -31,6 +31,7 @@ import {
   showMessage,
   Tag,
 } from "./ui";
+import { SafetyMenuButton } from "./Safety";
 
 export function otherSide(request: MatchRequest, me: string) {
   const iAmRequester = request.requester_user_id === me;
@@ -220,6 +221,12 @@ export function ConversationScreen() {
   const request = useAsync(() => api.getRequest(requestId), [requestId]);
   const messages = useAsync(() => api.listMessages(requestId), [requestId]);
   const myReviews = useAsync(() => api.listMyWrittenReviews(session.user.id), [session.user.id, requestId]);
+  const otherUserId = request.data
+    ? request.data.requester_user_id === session.user.id
+      ? request.data.recipient_user_id
+      : request.data.requester_user_id
+    : null;
+  const blocked = useAsync(() => (otherUserId ? api.hasBlocked(otherUserId) : Promise.resolve(false)), [otherUserId]);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [acting, setActing] = useState(false);
@@ -266,7 +273,7 @@ export function ConversationScreen() {
   const r = request.data;
   const { iAmRequester, otherDog, myDog, otherName } = otherSide(r, session.user.id);
   const status = REQUEST_STATUS[r.status];
-  const canChat = r.status === "pending" || r.status === "accepted" || r.status === "completed";
+  const canChat = (r.status === "pending" || r.status === "accepted" || r.status === "completed") && !blocked.data;
   const canReview = (r.status === "accepted" || r.status === "completed") && !(myReviews.data ?? []).some((x) => x.match_request_id === r.id);
 
   const send = async () => {
@@ -305,9 +312,21 @@ export function ConversationScreen() {
         subtitle="Discuss the pairing, schedule, and next steps."
         onBack={goBack}
         right={
-          otherDog ? (
-            <HeaderAction icon={PawPrint} label="Profile" onPress={() => navigate("match-profile", { dogId: otherDog.id })} />
-          ) : undefined
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            {otherDog ? (
+              <HeaderAction icon={PawPrint} label="Profile" onPress={() => navigate("match-profile", { dogId: otherDog.id })} />
+            ) : null}
+            {otherUserId ? (
+              <SafetyMenuButton
+                target={{ userId: otherUserId, name: otherName, matchRequestId: r.id }}
+                onBlocked={() => {
+                  blocked.setData(true);
+                  request.reload(true);
+                }}
+                onUnblocked={() => blocked.setData(false)}
+              />
+            ) : null}
+          </View>
         }
       />
 
@@ -322,7 +341,7 @@ export function ConversationScreen() {
             <DogImage uri={otherDog?.img} width={56} height={56} radius={16} style={{ borderWidth: 2, borderColor: "rgba(255,255,255,0.6)" }} />
             <View style={{ flex: 1 }}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                <Text style={{ fontSize: 18, color: "#fff", fontFamily: FONT_BOLD }}>{otherDog?.name ?? "Deleted dog"}</Text>
+                <Text style={{ fontSize: 18, color: "#fff", fontFamily: FONT_BOLD }}>{otherDog?.name ?? (blocked.data ? "Hidden dog" : "Deleted dog")}</Text>
                 {otherDog?.verified && (
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999, backgroundColor: "rgba(255,255,255,0.2)" }}>
                     <ShieldCheck size={12} color="#fff" />
@@ -458,7 +477,9 @@ export function ConversationScreen() {
           </>
         ) : (
           <Text style={{ textAlign: "center", color: T.medium, fontFamily: FONT, paddingVertical: 8 }}>
-            This request was {r.status}. Messaging is closed.
+            {blocked.data
+              ? `You blocked ${otherName}. Unblock them in Settings → Blocked Users to message again.`
+              : `This request was ${r.status}. Messaging is closed.`}
           </Text>
         )}
       </View>

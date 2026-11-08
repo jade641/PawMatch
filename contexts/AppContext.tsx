@@ -327,7 +327,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const d = n.data ?? {};
       // Accounts with both profiles: open the alert on the side of the app it belongs to.
       if (n.type === "verification_request" || n.type === "verifier_review") choosePortal("vet");
-      else if (n.type !== "system" && n.type !== "verifier_application") choosePortal("owner");
+      else if (n.type !== "system" && n.type !== "verifier_application" && n.type !== "user_report") choosePortal("owner");
       switch (n.type) {
         case "match_request":
         case "request_update":
@@ -348,6 +348,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
           break;
         case "verifier_review":
           navigate("vet-profile");
+          break;
+        case "user_report":
+          // Admins open the new report; reporters just see that theirs was reviewed.
+          if (d.kind === "new_report" && d.report_id) navigate("admin-report-detail", { reportId: Number(d.report_id) });
+          else navigate("notifications");
           break;
         case "system":
           if (d.kind === "complete_profile" || d.kind === "profile_completed" || d.kind === "location_updated") navigate("edit-profile");

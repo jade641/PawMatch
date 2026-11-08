@@ -15,7 +15,6 @@ import {
   Inbox,
   KeyRound,
   Lock,
-  LogOut,
   Mail,
   MapPin,
   PawPrint,
@@ -64,6 +63,7 @@ import {
   HeroIconButton,
   InfoRow,
   ListItem,
+  LogOutItem,
   Loading,
   DarkModeToggle,
   openLink,
@@ -1248,15 +1248,7 @@ export function VetSettings() {
             <ListItem icon={Trash2} title="Delete Account & Data" subtitle="How to request deletion of your data" onPress={() => openLink(DATA_DELETION_URL)} last />
           </SettingsGroup>
 
-          <View style={{ borderRadius: 18, overflow: "hidden", ...shadow }}>
-            <ListItem
-              icon={LogOut}
-              title="Log Out"
-              danger
-              last
-              onPress={() => confirmAction("Log out?", "You'll need to sign in again to review documents.", "Log Out", signOut)}
-            />
-          </View>
+          <LogOutItem message="You'll need to sign in again to review documents from dog owners." onLogOut={signOut} />
 
           <Text style={{ fontSize: 12, color: T.medium, fontFamily: FONT, textAlign: "center" }}>
             PawMatch Veterinarian Portal • Version {version} (beta)

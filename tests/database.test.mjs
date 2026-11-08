@@ -464,6 +464,101 @@ await step("internal helpers are not callable by clients", async () => {
   await asFails(A, "select public.recompute_reputation($1, null)", [A], /permission denied/);
 });
 
+await step("blocks: users only manage their own blocks", async () => {
+  await as(A, "insert into public.user_blocks (blocked_id) values ($1)", [C]);
+  await asFails(A, "insert into public.user_blocks (blocker_id, blocked_id) values ($1, $2)", [C, B], /permission denied/);
+  await asFails(A, "insert into public.user_blocks (blocked_id) values ($1)", [A], /check constraint/);
+  assert.equal((await as(C, "select blocked_id from public.user_blocks")).length, 0, "the blocked user can't see the block");
+  await asFails(C, "select public.users_blocked($1, $2)", [A, C], /permission denied/);
+  assert.equal((await as(C, "delete from public.user_blocks where blocker_id = $1 returning blocked_id", [A])).length, 0);
+  const blocks = await as(A, "select * from public.list_my_blocks()");
+  assert.deepEqual(blocks.map((b) => [b.blocked_id, b.full_name]), [[C, "Out Sider"]]);
+});
+
+let cocoId;
+await step("blocks: dogs hidden both ways and new requests refused", async () => {
+  [{ id: cocoId }] = await as(C, `insert into public.dogs (name, breed, age, sex, size, temperament)
+    values ('Coco','Labrador Retriever',2,'female','large','{Friendly}') returning id`);
+  assert.equal((await as(A, "select id from public.dogs where owner_id = $1", [C])).length, 0);
+  assert.equal((await as(C, "select id from public.dogs where owner_id = $1", [A])).length, 0);
+  assert.equal((await as(C, "select id from public.dogs where id = $1", [cocoId])).length, 1, "own dogs stay visible");
+  assert.equal((await as(B, "select id from public.dogs where owner_id = $1", [C])).length, 1, "other users are unaffected");
+  await asFails(C, "insert into public.match_requests (dog_id, requester_dog_id) values ($1, $2)", [maxId, cocoId], /can't send a request/);
+});
+
+await step("blocks: blocking closes active requests; blocked users can't message", async () => {
+  const [{ id: req2 }] = await as(C, `insert into public.match_requests (dog_id, requester_dog_id, message)
+    values ($1, $2, 'Hello Maria!') returning id`, [rexId, cocoId]);
+  await as(B, "select public.respond_match_request($1, 'accept')", [req2]);
+  await as(B, "insert into public.messages (match_request_id, body) values ($1, 'Hi Out!')", [req2]);
+  await as(C, "insert into public.user_blocks (blocked_id) values ($1)", [B]);
+  assert.equal((await su("select status from public.match_requests where id = $1", [req2]))[0].status, "cancelled");
+  await asFails(B, "insert into public.messages (match_request_id, body) values ($1, 'Still there?')", [req2], /can't message this owner/);
+
+  // A completed chat stays open, but not while either side has blocked the other.
+  await as(B, "insert into public.user_blocks (blocked_id) values ($1)", [A]);
+  assert.equal((await su("select status from public.match_requests where id = $1", [reqId]))[0].status, "completed");
+  await asFails(A, "insert into public.messages (match_request_id, body) values ($1, 'Hello?')", [reqId], /can't message this owner/);
+  assert.equal((await as(B, "delete from public.user_blocks where blocked_id = $1 returning blocked_id", [A])).length, 1);
+  await as(A, "insert into public.messages (match_request_id, body) values ($1, 'Thanks again!')", [reqId]);
+});
+
+let reportId;
+await step("reports: owner reports a user, admins alerted, one open report at a time", async () => {
+  [{ id: reportId }] = await as(A, `insert into public.user_reports (reported_id, reason, details, match_request_id)
+    values ($1, 'scam', '  Asked for payment first  ', $2) returning id`, [B, reqId]);
+  const [r] = await su("select reporter_id, status, details from public.user_reports where id = $1", [reportId]);
+  assert.equal(r.reporter_id, A);
+  assert.equal(r.status, "open");
+  assert.equal(r.details, "Asked for payment first");
+  await asFails(A, "insert into public.user_reports (reported_id, reason) values ($1, 'spam')", [B], /duplicate key/);
+  await asFails(A, "insert into public.user_reports (reporter_id, reported_id, reason) values ($1, $2, 'spam')", [C, B], /permission denied/);
+  await asFails(A, "insert into public.user_reports (reported_id, reason, status) values ($1, 'spam', 'dismissed')", [C], /permission denied/);
+  await asFails(A, "insert into public.user_reports (reported_id, reason) values ($1, 'spam')", [A], /check constraint/);
+  await asFails(A, "insert into public.user_reports (reported_id, reason) values ($1, 'rude')", [C], /check constraint/);
+  await asFails(C, "insert into public.user_reports (reported_id, reason, match_request_id) values ($1, 'scam', $2)", [B, reqId], /conversation you are part of/);
+  await asFails(C, "insert into public.user_reports (reported_id, reason, dog_id) values ($1, 'fake_profile', $2)", [B, maxId], /does not belong/);
+
+  const notes = await as(ADM, "select title, data from public.notifications where type = 'user_report'");
+  assert.equal(notes.length, 1);
+  assert.equal(notes[0].title, "New report: Scam or fraud");
+  assert.equal(notes[0].data.kind, "new_report");
+  assert.equal(Number(notes[0].data.report_id), Number(reportId));
+  assert.equal((await as(B, "select id from public.user_reports")).length, 0, "the reported user can't see reports");
+  assert.equal((await as(A, "select id from public.user_reports")).length, 1);
+  await asFails(A, "update public.user_reports set status = 'dismissed' where id = $1", [reportId], /permission denied/);
+});
+
+await step("reports: only admins list and review; the reporter is told", async () => {
+  await asFails(A, "select * from public.admin_list_reports()", [], /Only PawMatch administrators/);
+  await asFails(A, "select public.admin_review_report($1, 'dismissed')", [reportId], /Only PawMatch administrators/);
+  const [row] = (await as(ADM, "select * from public.admin_list_reports()")).filter((x) => Number(x.id) === Number(reportId));
+  assert.equal(row.reporter_name, "Juan D. Cruz");
+  assert.equal(row.reported_name, "Maria Santos");
+  assert.equal(row.reported_email, "maria@test.ph");
+  assert.equal(Number(row.reported_report_count), 1);
+  assert.equal(row.status, "open");
+
+  await asFails(ADM, "select public.admin_review_report($1, 'banned')", [reportId], /resolved or dismissed/);
+  await as(ADM, "select public.admin_review_report($1, 'resolved', 'Warned the owner')", [reportId]);
+  const [done] = await su("select status, admin_notes, reviewed_by from public.user_reports where id = $1", [reportId]);
+  assert.equal(done.status, "resolved");
+  assert.equal(done.admin_notes, "Warned the owner");
+  assert.equal(done.reviewed_by, ADM);
+  await asFails(ADM, "select public.admin_review_report($1, 'dismissed')", [reportId], /already been reviewed/);
+  const [n] = await as(A, "select title, data from public.notifications where type = 'user_report'");
+  assert.equal(n.title, "Your report was reviewed");
+  assert.equal(n.data.kind, "report_reviewed");
+  // Once reviewed, the same person can be reported again.
+  await as(A, "insert into public.user_reports (reported_id, reason) values ($1, 'harassment')", [B]);
+
+  // Admins never review reports they are part of, and aren't alerted about them.
+  const before = (await as(ADM, "select id from public.notifications where type = 'user_report'")).length;
+  const [{ id: aboutAdmin }] = await as(C, "insert into public.user_reports (reported_id, reason) values ($1, 'other') returning id", [ADM]);
+  assert.equal((await as(ADM, "select id from public.notifications where type = 'user_report'")).length, before);
+  await asFails(ADM, "select public.admin_review_report($1, 'dismissed')", [aboutAdmin], /involved in/);
+});
+
 await step("deleting a dog cascades its requests and submissions", async () => {
   await as(A, "delete from public.dogs where id=$1", [maxId]);
   assert.equal((await su("select id from public.match_requests where requester_dog_id is null and id=$1", [reqId])).length, 1);
