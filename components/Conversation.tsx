@@ -27,6 +27,7 @@ import {
   Header,
   HeaderAction,
   Loading,
+  Notice,
   SegmentedTabs,
   showMessage,
   Tag,
@@ -406,6 +407,8 @@ export function ConversationScreen() {
             )}
           </View>
         </View>
+
+        {(r.status === "pending" || r.status === "accepted") && !blocked.data ? <Notice tone="info" title="Before you breed" text="Meet the owner in person and see the dog and its original vet card. Never send money before you have met." style={{ marginBottom: 14 }} /> : null}
 
         {canReview && <ReviewForm request={r} otherName={otherName} onDone={() => myReviews.reload(true)} />}
 

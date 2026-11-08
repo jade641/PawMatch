@@ -27,7 +27,7 @@ const OWNER_TABS: Tab[] = [
     label: "Match",
     screens: ["match", "filter", "match-profile", "send-request", "requests"],
   },
-  { icon: DogIcon, label: "Dog", screens: ["dog-profile", "add-dog", "edit-dog"] },
+  { icon: DogIcon, label: "Dog", screens: ["dog-profile", "add-dog", "edit-dog", "photo-verification"] },
   { icon: Shield, label: "Verify", screens: ["verify-upload", "verify-choose", "verify-status", "audit-trail"] },
   {
     icon: User,
@@ -47,7 +47,7 @@ const VET_TABS: Tab[] = [
 const ADMIN_TAB: Tab = {
   icon: ShieldCheck,
   label: "Admin",
-  screens: ["admin-verifiers", "admin-verifier-detail", "admin-reports", "admin-report-detail"],
+  screens: ["admin-verifiers", "admin-verifier-detail", "admin-reports", "admin-report-detail", "admin-restricted", "admin-photos", "admin-photo-detail"],
 };
 
 /** Full-screen pages without the tab bar. */
@@ -169,7 +169,7 @@ export function Shell({ children }: { children: ReactNode }) {
   }, [canGoBack, goBack]);
 
   const isVet = !!session && isVetPortal(session, portal);
-  const showNav = !!session && !NO_NAV.includes(screen);
+  const showNav = !!session && !session.user.suspended_at && !NO_NAV.includes(screen);
   const tabs = isVet ? VET_TABS : OWNER_TABS;
 
   return (

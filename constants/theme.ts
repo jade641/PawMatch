@@ -200,6 +200,12 @@ export const REPORT_STATUS: Record<ReportStatus, { label: string; tone: Tone }> 
   dismissed: { label: "Dismissed", tone: "neutral" },
 };
 
+export const PHOTO_VERIFICATION_STATUS: Record<"pending" | "approved" | "rejected", { label: string; tone: Tone }> = {
+  pending: { label: "Waiting", tone: "warning" },
+  approved: { label: "Approved", tone: "success" },
+  rejected: { label: "Not Approved", tone: "danger" },
+};
+
 export function applicationStatus(v: { approved: boolean; reviewed_at: string | null }): ApplicationStatus {
   return v.approved ? "approved" : v.reviewed_at ? "rejected" : "pending";
 }

@@ -10,6 +10,7 @@ import {
   ChevronRight,
   Clock,
   Edit,
+  EyeOff,
   FileCheck,
   FileText,
   Heart,
@@ -79,6 +80,7 @@ import {
   InfoRow,
   ListItem,
   LogOutItem,
+  Notice,
   Loading,
   openLink,
   PRIVACY_URL,
@@ -111,6 +113,11 @@ function DogHeaderBlock({ dog }: { dog: Dog }) {
       <Text style={{ fontSize: 14, color: T.medium, fontFamily: FONT }}>
         {dog.breed} • {formatAge(dog.age)} • {capitalize(dog.sex)}
       </Text>
+      {dog.photo_verified_at ? (
+        <View style={{ marginTop: 8 }}>
+          <Tag label="✓ Photo Verified" tone="success" />
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -310,6 +317,18 @@ export function DogProfile() {
           </View>
         )}
         <DogHeaderBlock dog={dog} />
+        {dog.hidden_at ? (
+          <View style={{ flexDirection: "row", gap: 12, marginHorizontal: 20, marginTop: 16, padding: 14, borderRadius: 14, backgroundColor: T.errorLight }}>
+            <EyeOff size={20} color={T.error} strokeWidth={2} />
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text style={{ fontSize: 14, color: T.error, fontFamily: FONT_BOLD }}>Hidden by the PawMatch team</Text>
+              <Text style={{ fontSize: 13, lineHeight: 19, color: T.dark, fontFamily: FONT }}>
+                Other owners can&apos;t see {dog.name}, and {dog.name} can&apos;t be used for match requests.
+                {dog.hidden_reason ? ` Reason: ${dog.hidden_reason}` : ""}
+              </Text>
+            </View>
+          </View>
+        ) : null}
         <SegmentedTabs
           tabs={[
             { id: "info", label: "Basic Info", icon: FileText },
@@ -382,6 +401,18 @@ export function DogProfile() {
                 );
               })
             )}
+            <Card onPress={() => navigate("photo-verification", { dogId: dog.id })} accessibilityLabel="Photo verification" style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+              <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: dog.photo_verified_at ? T.successLight : T.primaryLight, alignItems: "center", justifyContent: "center" }}>
+                <Camera size={17} color={dog.photo_verified_at ? T.success : T.primary} strokeWidth={1.6} />
+              </View>
+              <View style={{ flex: 1, gap: 3 }}>
+                <Text style={{ fontSize: 14, color: T.dark, fontFamily: FONT_BOLD }}>Photo Verified badge</Text>
+                <Text style={{ fontSize: 12, color: T.medium, fontFamily: FONT }}>
+                  {dog.photo_verified_at ? `Verified ${formatDate(dog.photo_verified_at)}` : "Prove this dog and photo are really yours"}
+                </Text>
+              </View>
+              <ChevronRight size={18} color={T.light} />
+            </Card>
             <TierCard dog={dog} onAudit={() => navigate("audit-trail", { dogId: dog.id })} />
           </View>
         )}
@@ -441,6 +472,7 @@ export function DogProfile() {
             <Text style={{ fontSize: 12, color: T.medium, fontFamily: FONT, marginTop: 12 }}>
               Tap a photo to make it the profile photo.
             </Text>
+            <Notice tone="warning" text="Use real photos of your own dog. Fake, AI-generated or copied photos can get your listing hidden or your account suspended." style={{ marginTop: 12 }} />
           </View>
         )}
       </ScrollView>
@@ -591,6 +623,8 @@ function DogForm({ existing }: { existing?: Dog }) {
         </View>
 
         <View style={{ paddingHorizontal: 16, gap: 16 }}>
+          <Notice tone="warning" text="Use real photos of your own dog. Fake, AI-generated or copied photos can get your listing hidden or your account suspended." />
+
           <SectionCard icon={PawPrint} title="Basic Info">
             <Field label="Dog's Name *" value={form.name} onChangeText={(v) => set("name", v)} placeholder="e.g. Bella" maxLength={40} error={errors.name} />
 
@@ -1161,7 +1195,7 @@ function SendRequestForm() {
   const { goBack, replace, params, myDogs, activeDog, setActiveDogId, showToast, navigate } = useApp();
   const dogId: string = params.dogId;
   const target = useAsync(() => api.getDog(dogId), [dogId]);
-  const eligible = myDogs.filter((d) => target.data && d.sex !== target.data.sex);
+  const eligible = myDogs.filter((d) => !d.hidden_at && target.data && d.sex !== target.data.sex);
   const mine = eligible.find((d) => d.id === activeDog?.id) ?? eligible[0] ?? null;
   const existing = useAsync(() => (mine ? api.findOpenRequest(dogId, mine.id) : Promise.resolve(null)), [dogId, mine?.id]);
   const [message, setMessage] = useState("");
@@ -1260,6 +1294,7 @@ function SendRequestForm() {
                       style={{ marginBottom: 0 }}
                     />
                   </Card>
+                  <Notice tone="info" title="Before you breed" text="Meet the owner in person and see the dog and its original vet card. Never send money before you have met." />
                   <Btn title="Send Request" icon={CheckCircle} size="large" loading={sending} onPress={send} />
                 </>
               )}

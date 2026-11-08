@@ -31,7 +31,7 @@ const corsHeaders = {
 const ALERT_THRESHOLD = 80;
 
 const DOG_COLUMNS =
-  "id, owner_id, name, breed, age, sex, size, color, temperament, description, score, verified, tier, verified_docs, img, photos, rating, reviews, created_at, owner:owners(user_id, display_name, location, rating, review_count, completed_matches, verified_at)";
+  "id, owner_id, name, breed, age, sex, size, color, temperament, description, score, verified, tier, verified_docs, img, photos, rating, reviews, created_at, photo_verified_at, owner:owners(user_id, display_name, location, rating, review_count, completed_matches, verified_at)";
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {

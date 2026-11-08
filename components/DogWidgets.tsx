@@ -1,4 +1,4 @@
-import { Check, ChevronDown, Eye, FileText, MapPin, Send, Star, Stethoscope, Syringe, X } from "lucide-react-native";
+import { Camera, Check, ChevronDown, Eye, FileText, MapPin, Send, Star, Stethoscope, Syringe, X } from "lucide-react-native";
 import { useRef, useState } from "react";
 import { ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { capitalize, DOC_TYPES, FONT, FONT_BOLD, FONT_MEDIUM, formatAge, ON_PHOTO_TEXT, shadow, T } from "../constants/theme";
@@ -349,6 +349,13 @@ export function TrustIndicators({ dog }: { dog: Dog }) {
   const docs = DOC_TYPES.filter((d) => d.type !== "dna" || dog.verified_docs.includes("dna"));
   return (
     <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+      {dog.photo_verified_at ? (
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+          <Camera size={12} color={T.success} strokeWidth={2} />
+          <Text style={{ fontSize: 11, color: T.success, fontFamily: FONT_MEDIUM }}>Photo Verified</Text>
+          <Check size={12} color={T.success} strokeWidth={2.5} />
+        </View>
+      ) : null}
       {docs.map((d) => {
         const ok = dog.verified_docs.includes(d.type);
         const Icon = DOC_ICONS[d.type];

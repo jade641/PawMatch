@@ -39,7 +39,7 @@ import * as api from "../services/api";
 import { pickDocument, pickImage, type PickedFile, takePhoto } from "../services/media";
 import type { DocType, Submission } from "../types";
 import { MyDogSelector } from "./DogWidgets";
-import { Avatar, Btn, Card, DogImage, EmptyState, ErrorView, Header, HeaderAction, Loading, ScoreBar, showMessage, Tag, TextLink, VeriBadge } from "./ui";
+import { Avatar, Btn, Card, DogImage, EmptyState, ErrorView, Header, HeaderAction, Loading, Notice, ScoreBar, showMessage, Tag, TextLink, VeriBadge } from "./ui";
 
 interface StagedDoc {
   type: DocType;
@@ -141,6 +141,8 @@ export function VerifyUpload() {
         <Text style={{ fontSize: 14, color: T.medium, fontFamily: FONT, lineHeight: 20 }}>
           Upload documents to earn your verification badge. More documents = higher tier.
         </Text>
+
+        <Notice tone="warning" text="Only upload genuine documents for this dog. Fake or edited documents can get your account suspended." />
 
         {myDogs.length > 1 && <MyDogSelector dogs={myDogs} activeId={dog.id} onSelect={chooseDog} label="Dog to verify" />}
 

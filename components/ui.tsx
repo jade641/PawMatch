@@ -1,6 +1,6 @@
 import { StatusBar } from "expo-status-bar";
 import * as WebBrowser from "expo-web-browser";
-import { AlertCircle, ArrowLeft, ChevronRight, Eye, EyeOff, LogOut, Moon, PawPrint, Star, Sun } from "lucide-react-native";
+import { AlertCircle, ArrowLeft, ChevronRight, Eye, EyeOff, LogOut, Moon, PawPrint, ShieldCheck, Star, Sun } from "lucide-react-native";
 import { type ComponentType, type ReactNode, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -320,6 +320,22 @@ export function InfoRow({ label, value, last }: { label: string; value: ReactNod
       ) : (
         value
       )}
+    </View>
+  );
+}
+
+/** Short reminder box, e.g. a safety tip above a form. */
+export function Notice({ text, title, tone = "info", style }: { text: string; title?: string; tone?: "info" | "warning"; style?: StyleProp<ViewStyle> }) {
+  const warning = tone === "warning";
+  const Icon = warning ? AlertCircle : ShieldCheck;
+  const color = warning ? T.warning : T.accentDark;
+  return (
+    <View style={[{ flexDirection: "row", gap: 10, padding: 12, borderRadius: 14, backgroundColor: warning ? T.warningLight : T.accentLight }, style]}>
+      <Icon size={18} color={color} strokeWidth={2} style={{ marginTop: 1 }} />
+      <View style={{ flex: 1, gap: 2 }}>
+        {title ? <Text style={{ fontSize: 13, color, fontFamily: FONT_BOLD }}>{title}</Text> : null}
+        <Text style={{ fontSize: 12, color: T.dark, fontFamily: FONT, lineHeight: 18 }}>{text}</Text>
+      </View>
     </View>
   );
 }

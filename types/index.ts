@@ -20,6 +20,9 @@ export interface UserProfile {
   role: Role;
   /** False until the user picks a location (Google sign-ups skip the sign-up form). */
   profile_completed: boolean;
+  /** Set while an administrator has suspended the account. */
+  suspended_at: string | null;
+  suspended_reason: string | null;
   created_at: string;
 }
 
@@ -100,6 +103,11 @@ export interface Dog {
   rating: number;
   reviews: number;
   created_at: string;
+  /** Set while an administrator has hidden the listing; only its owner can then read it. */
+  hidden_at?: string | null;
+  hidden_reason?: string | null;
+  /** Set once an administrator confirmed this dog and listing photo are genuine. */
+  photo_verified_at?: string | null;
   owner?: OwnerSummary | null;
 }
 
@@ -180,6 +188,7 @@ export type NotificationType =
   | "verifier_application"
   | "verifier_review"
   | "user_report"
+  | "photo_verification"
   | "system";
 
 export interface AppNotification {
@@ -238,6 +247,60 @@ export interface UserReport {
   dog_name: string | null;
 }
 
+export type PhotoVerificationStatus = "awaiting_photo" | "pending" | "approved" | "rejected";
+
+export interface PhotoVerification {
+  id: string;
+  dog_id: string;
+  owner_id: string;
+  code: string;
+  code_issued_at: string;
+  photo_path: string | null;
+  status: PhotoVerificationStatus;
+  review_notes: string | null;
+  reviewed_at: string | null;
+  submitted_at: string | null;
+  created_at: string;
+}
+
+/** A submitted photo as seen by admins (admin_list_photo_verifications). */
+export interface AdminPhotoVerification {
+  id: string;
+  status: Exclude<PhotoVerificationStatus, "awaiting_photo">;
+  code: string;
+  /** Null once the photo has been deleted after review. */
+  photo_path: string | null;
+  review_notes: string | null;
+  reviewer_name: string | null;
+  submitted_at: string;
+  reviewed_at: string | null;
+  dog_id: string;
+  dog_name: string;
+  dog_breed: string;
+  dog_img: string | null;
+  owner_id: string;
+  owner_name: string;
+}
+
+/** A reported user's account status and dogs (admin_user_moderation). */
+export interface UserModeration {
+  role: Role;
+  suspended_at: string | null;
+  suspended_reason: string | null;
+  dogs: { id: string; name: string; breed: string; img: string | null; hidden_at: string | null; hidden_reason: string | null }[];
+}
+
+/** A hidden listing or suspended account (admin_list_restricted). */
+export interface RestrictedItem {
+  kind: "dog" | "user";
+  target_id: string;
+  title: string;
+  subtitle: string;
+  reason: string | null;
+  restricted_at: string;
+  restricted_by: string | null;
+}
+
 export interface RankedMatch {
   dog: Dog;
   compatibility: CompatibilityBreakdown;
@@ -291,4 +354,8 @@ export type Screen =
   | "admin-verifier-detail"
   | "admin-reports"
   | "admin-report-detail"
+  | "admin-restricted"
+  | "admin-photos"
+  | "admin-photo-detail"
+  | "photo-verification"
   | "blocked-users";

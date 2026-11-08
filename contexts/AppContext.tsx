@@ -285,6 +285,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (!n.data?.silent) setToast({ id: Date.now(), title: n.title, message: n.body, tone: "info", notification: n });
       if (n.type === "verification_result") reloadDogs().catch(() => undefined);
       if (n.type === "verifier_review") loadSession().catch(() => undefined);
+      if (n.data?.kind === "account_suspended" || n.data?.kind === "account_reinstated") loadSession().catch(() => undefined);
+      if (n.data?.kind === "dog_hidden" || n.data?.kind === "dog_restored" || n.data?.kind === "photo_reviewed") reloadDogs().catch(() => undefined);
     });
     return () => {
       active = false;
@@ -327,7 +329,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const d = n.data ?? {};
       // Accounts with both profiles: open the alert on the side of the app it belongs to.
       if (n.type === "verification_request" || n.type === "verifier_review") choosePortal("vet");
-      else if (n.type !== "system" && n.type !== "verifier_application" && n.type !== "user_report") choosePortal("owner");
+      else if (n.type !== "system" && n.type !== "verifier_application" && n.type !== "user_report" && d.kind !== "new_photo") choosePortal("owner");
       switch (n.type) {
         case "match_request":
         case "request_update":
@@ -349,6 +351,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         case "verifier_review":
           navigate("vet-profile");
           break;
+        case "photo_verification":
+          if (d.kind === "new_photo" && d.verification_id) navigate("admin-photo-detail", { verificationId: d.verification_id });
+          else if (d.dog_id) navigate("photo-verification", { dogId: d.dog_id });
+          else navigate("notifications");
+          break;
         case "user_report":
           // Admins open the new report; reporters just see that theirs was reviewed.
           if (d.kind === "new_report" && d.report_id) navigate("admin-report-detail", { reportId: Number(d.report_id) });
@@ -356,6 +363,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           break;
         case "system":
           if (d.kind === "complete_profile" || d.kind === "profile_completed" || d.kind === "location_updated") navigate("edit-profile");
+          else if (d.kind === "dog_hidden" || d.kind === "dog_restored") navigate("dog-profile", { dogId: d.dog_id });
           else navigate("notifications");
           break;
         case "match_alert":

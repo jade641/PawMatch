@@ -5,6 +5,7 @@ import { File as ExpoFile } from "expo-file-system";
 import { Platform } from "react-native";
 import { supabase } from "../lib/supabase";
 import type {
+  AdminPhotoVerification,
   AppNotification,
   AuditEntry,
   BlockedUser,
@@ -14,14 +15,17 @@ import type {
   MatchRequest,
   Message,
   OwnerProfile,
+  PhotoVerification,
   RankedMatch,
   ReportReason,
   ReportStatus,
+  RestrictedItem,
   Review,
   Session,
   Sex,
   Size,
   Submission,
+  UserModeration,
   UserReport,
   VerifierApplication,
   VerifierProfile,
@@ -447,7 +451,7 @@ async function readLocalFile(uri: string): Promise<Blob | Uint8Array> {
   return new ExpoFile(uri).bytes();
 }
 
-async function uploadFile(bucket: "dog-photos" | "documents" | "avatars", ownerId: string, prefix: string, uri: string, mimeType: string) {
+async function uploadFile(bucket: "dog-photos" | "documents" | "avatars" | "dog-verifications", ownerId: string, prefix: string, uri: string, mimeType: string) {
   const contentType = mimeType === "image/jpg" ? "image/jpeg" : mimeType;
   const ext = EXTENSIONS[contentType];
   if (!ext) fail("Unsupported file type. Please use JPG, PNG or PDF.");
@@ -829,6 +833,90 @@ export async function listReports(): Promise<UserReport[]> {
 export async function reviewReport(id: number, status: Exclude<ReportStatus, "open">, notes: string) {
   const { error } = await supabase.rpc("admin_review_report", { p_report_id: id, p_status: status, p_notes: notes });
   if (error) fail(error);
+}
+
+/* ── Photo Verified badge ───────────────────────────────────────────── */
+
+export async function getLatestPhotoVerification(dogId: string): Promise<PhotoVerification | null> {
+  const { data, error } = await supabase
+    .from("dog_photo_verifications")
+    .select("*")
+    .eq("dog_id", dogId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) fail(error);
+  return data;
+}
+
+/** Returns the dog's open code, or issues a new one. */
+export async function startPhotoVerification(dogId: string): Promise<PhotoVerification> {
+  const { data, error } = await supabase.rpc("start_photo_verification", { p_dog: dogId });
+  if (error) fail(error);
+  return data as PhotoVerification;
+}
+
+export async function submitPhotoVerification(id: string, ownerId: string, uri: string, mimeType: string) {
+  const path = await uploadFile("dog-verifications", ownerId, "verify", uri, mimeType);
+  const { error } = await supabase.rpc("submit_photo_verification", { p_id: id, p_path: path });
+  if (error) {
+    await supabase.storage.from("dog-verifications").remove([path]);
+    fail(error);
+  }
+}
+
+/** Deletes a reviewed photo and clears it from the record; false leaves it for the next load to retry. */
+async function deleteReviewedPhoto(id: string, path: string): Promise<boolean> {
+  const { error: removeError } = await supabase.storage.from("dog-verifications").remove([path]);
+  if (removeError) return false;
+  const { error } = await supabase.rpc("admin_clear_reviewed_photo", { p_id: id });
+  return !error;
+}
+
+/** Loading the list also deletes any photo that has been reviewed. */
+export async function listPhotoVerifications(): Promise<AdminPhotoVerification[]> {
+  const { data, error } = await supabase.rpc("admin_list_photo_verifications");
+  if (error) fail(error);
+  return Promise.all(
+    ((data ?? []) as AdminPhotoVerification[]).map(async (v) =>
+      v.status !== "pending" && v.photo_path && (await deleteReviewedPhoto(v.id, v.photo_path)) ? { ...v, photo_path: null } : v,
+    ),
+  );
+}
+
+export async function reviewPhotoVerification(id: string, decision: "approve" | "reject", notes: string) {
+  const { error } = await supabase.rpc("admin_review_photo_verification", { p_id: id, p_decision: decision, p_notes: notes });
+  if (error) fail(error);
+}
+
+export async function getVerificationPhotoUrl(path: string): Promise<string> {
+  const { data, error } = await supabase.storage.from("dog-verifications").createSignedUrl(path, 60 * 10);
+  if (error) fail(error);
+  return data.signedUrl;
+}
+
+/* ── Admin: hidden listings and suspended accounts ──────────────────── */
+
+export async function getUserModeration(userId: string): Promise<UserModeration> {
+  const { data, error } = await supabase.rpc("admin_user_moderation", { p_user: userId });
+  if (error) fail(error);
+  return data as UserModeration;
+}
+
+export async function setDogHidden(dogId: string, hidden: boolean, reason = "") {
+  const { error } = await supabase.rpc("admin_set_dog_hidden", { p_dog: dogId, p_hidden: hidden, p_reason: reason });
+  if (error) fail(error);
+}
+
+export async function setUserSuspended(userId: string, suspended: boolean, reason = "") {
+  const { error } = await supabase.rpc("admin_set_user_suspended", { p_user: userId, p_suspended: suspended, p_reason: reason });
+  if (error) fail(error);
+}
+
+export async function listRestricted(): Promise<RestrictedItem[]> {
+  const { data, error } = await supabase.rpc("admin_list_restricted");
+  if (error) fail(error);
+  return (data ?? []) as RestrictedItem[];
 }
 
 /* ── Reviews & reputation ───────────────────────────────────────────── */

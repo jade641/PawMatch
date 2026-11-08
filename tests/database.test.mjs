@@ -559,6 +559,183 @@ await step("reports: only admins list and review; the reporter is told", async (
   await asFails(ADM, "select public.admin_review_report($1, 'dismissed')", [aboutAdmin], /involved in/);
 });
 
+await step("moderation: only admins can hide listings or suspend accounts", async () => {
+  await asFails(A, "select public.admin_set_dog_hidden($1, true, 'x')", [bellaId], /Only PawMatch administrators/);
+  await asFails(A, "select public.admin_set_user_suspended($1, true, 'x')", [B], /Only PawMatch administrators/);
+  await asFails(A, "select public.admin_user_moderation($1)", [B], /Only PawMatch administrators/);
+  await asFails(A, "select * from public.admin_list_restricted()", [], /Only PawMatch administrators/);
+  await asFails(B, "update public.dogs set hidden_at = null where id = $1", [bellaId], /permission denied/);
+  await asFails(A, "update public.users set suspended_at = null where id = $1", [A], /permission denied/);
+  await asFails(ADM, "select public.admin_set_dog_hidden($1, true, '  ')", [bellaId], /add a reason/);
+  await asFails(ADM, "select public.admin_set_user_suspended($1, true, ' ')", [B], /add a reason/);
+  await asFails(ADM, "select public.admin_set_user_suspended($1, true, 'x')", [ADM], /your own account/);
+});
+
+await step("moderation: hiding a dog hides it for others and closes its requests", async () => {
+  const [{ id: lunaId }] = await su("select id from public.dogs where name = 'Luna'");
+  const [{ id: req }] = await as(A, "insert into public.match_requests (dog_id, requester_dog_id) values ($1, $2) returning id", [lunaId, maxId]);
+  await as(ADM, "select public.admin_set_dog_hidden($1, true, 'Photo copied from the internet')", [lunaId]);
+  await asFails(ADM, "select public.admin_set_dog_hidden($1, true, 'again')", [lunaId], /already hidden/);
+
+  assert.equal((await su("select status from public.match_requests where id = $1", [req]))[0].status, "cancelled");
+  assert.equal((await as(A, "select id from public.dogs where id = $1", [lunaId])).length, 0, "hidden from other owners");
+  const [own] = await as(B, "select hidden_at, hidden_reason from public.dogs where id = $1", [lunaId]);
+  assert.ok(own.hidden_at, "the owner still sees the listing");
+  assert.equal(own.hidden_reason, "Photo copied from the internet");
+  await asFails(A, "insert into public.match_requests (dog_id, requester_dog_id) values ($1, $2)", [lunaId, maxId], /no longer available/);
+
+  const [closed] = await as(A, "select body from public.notifications where type = 'request_update' and (data->>'match_request_id')::bigint = $1", [req]);
+  assert.equal(closed.body, "This request was closed by the PawMatch team.");
+  const [told] = await as(B, "select body from public.notifications where data->>'kind' = 'dog_hidden'");
+  assert.match(told.body, /Photo copied from the internet/);
+
+  const status = (await as(ADM, "select public.admin_user_moderation($1) as m", [B]))[0].m;
+  assert.equal(status.dogs.find((d) => d.id === lunaId).hidden_reason, "Photo copied from the internet");
+  const restricted = await as(ADM, "select * from public.admin_list_restricted()");
+  assert.deepEqual(restricted.map((x) => [x.kind, x.target_id, x.title]), [["dog", lunaId, "Luna"]]);
+
+  await as(ADM, "select public.admin_set_dog_hidden($1, false)", [lunaId]);
+  assert.equal((await as(A, "select id from public.dogs where id = $1", [lunaId])).length, 1, "visible again");
+  await asFails(ADM, "select public.admin_set_dog_hidden($1, false)", [lunaId], /not hidden/);
+  assert.equal((await as(ADM, "select * from public.admin_list_restricted()")).length, 0);
+});
+
+await step("moderation: a suspended account can read but not change anything", async () => {
+  const [{ id: req }] = await as(A, "insert into public.match_requests (dog_id, requester_dog_id) values ($1, $2) returning id", [bellaId, maxId]);
+  await as(ADM, "select public.admin_set_user_suspended($1, true, 'Selling fake vaccination cards')", [A]);
+  await asFails(ADM, "select public.admin_set_user_suspended($1, true, 'again')", [A], /already suspended/);
+  assert.equal((await su("select status from public.match_requests where id = $1", [req]))[0].status, "cancelled");
+
+  const [me] = await as(A, "select suspended_at, suspended_reason from public.users where id = $1", [A]);
+  assert.ok(me.suspended_at);
+  assert.equal(me.suspended_reason, "Selling fake vaccination cards");
+  assert.equal((await as(B, "select id from public.dogs where owner_id = $1", [A])).length, 0, "their dogs disappear");
+  assert.equal((await as(A, "select id from public.dogs where id = $1", [maxId])).length, 1);
+
+  await asFails(A, "insert into public.dogs (name, breed, age, sex, size) values ('X','Y',1,'male','small')", [], /suspended/);
+  await asFails(A, "update public.dogs set name = 'New' where id = $1", [maxId], /suspended/);
+  await asFails(A, "delete from public.dogs where id = $1", [maxId], /suspended/);
+  await asFails(A, "insert into public.messages (match_request_id, body) values ($1, 'hello')", [reqId], /suspended/);
+  await asFails(A, "insert into public.user_reports (reported_id, reason) values ($1, 'spam')", [V], /suspended/);
+  await asFails(B, "insert into public.match_requests (dog_id, requester_dog_id) values ($1, $2)", [maxId, bellaId], /no longer available/);
+
+  const [told] = await as(A, "select title from public.notifications where data->>'kind' = 'account_suspended'");
+  assert.equal(told.title, "Your account was suspended");
+  await as(ADM, "select public.admin_set_user_suspended($1, false)", [A]);
+  assert.equal((await as(B, "select id from public.dogs where owner_id = $1", [A])).length, 1, "their dogs return");
+  await as(A, "update public.dogs set description = 'Back again' where id = $1", [maxId]);
+});
+
+await step("moderation: suspended verifiers are unlisted; admins can't be suspended", async () => {
+  await as(ADM, "select public.admin_set_user_suspended($1, true, 'License complaint')", [V]);
+  assert.ok(!(await as(A, "select user_id from public.verifiers")).some((v) => v.user_id === V));
+  assert.equal((await as(V, "select user_id from public.verifiers where user_id = $1", [V])).length, 1);
+  await asFails(A, `insert into public.verifier_submissions (dog_id, verifier_user_id, submission_type, document_url)
+    values ($1, $2, 'health_clearance', $3)`, [maxId, V, `${A}/health-1.pdf`], /not available/);
+  await as(ADM, "select public.admin_set_user_suspended($1, false)", [V]);
+
+  await su("update public.users set role = 'admin' where id = $1", [W]);
+  await asFails(ADM, "select public.admin_set_user_suspended($1, true, 'x')", [W], /can't be suspended/);
+  await su("update public.users set role = 'verifier' where id = $1", [W]);
+});
+
+let photoId, photoCode;
+await step("photo verification: only the owner of a dog with a photo gets a code", async () => {
+  await asFails(A, "select * from public.start_photo_verification($1)", [maxId], /Add a profile photo/);
+  await as(A, "update public.dogs set img = 'https://x/max.jpg' where id = $1", [maxId]);
+  await asFails(B, "select * from public.start_photo_verification($1)", [maxId], /Dog not found/);
+  await asFails(A, "update public.dogs set photo_verified_at = now() where id = $1", [maxId], /permission denied/);
+  await asFails(A, "insert into public.dog_photo_verifications (dog_id, owner_id, code) values ($1, $2, 'PM-000000')", [maxId, A], /permission denied/);
+
+  await as(ADM, "select public.admin_set_dog_hidden($1, true, 'Checking')", [maxId]);
+  await asFails(A, "select * from public.start_photo_verification($1)", [maxId], /Hidden listings/);
+  await as(ADM, "select public.admin_set_dog_hidden($1, false)", [maxId]);
+
+  [{ id: photoId, code: photoCode }] = await as(A, "select * from public.start_photo_verification($1)", [maxId]);
+  assert.match(photoCode, /^PM-[0-9A-F]{6}$/);
+  const [again] = await as(A, "select * from public.start_photo_verification($1)", [maxId]);
+  assert.equal(again.id, photoId);
+  assert.equal(again.code, photoCode, "the open code is reused");
+  assert.equal((await as(B, "select id from public.dog_photo_verifications")).length, 0);
+});
+
+const proof = `${A}/verify-1.jpg`;
+await step("photo verification: submitting checks the code, upload and folder; admins alerted", async () => {
+  await as(B, "insert into storage.objects (bucket_id, name) values ('dog-verifications', $1)", [`${B}/other.jpg`]);
+  await asFails(A, "insert into storage.objects (bucket_id, name) values ('dog-verifications', $1)", [`${B}/x.jpg`], /row-level security/);
+  await asFails(A, "select * from public.submit_photo_verification($1, $2)", [photoId, proof], /Upload the photo/);
+  await asFails(A, "select * from public.submit_photo_verification($1, $2)", [photoId, `${B}/other.jpg`], /Upload the photo/);
+  await as(A, "insert into storage.objects (bucket_id, name) values ('dog-verifications', $1)", [proof]);
+  await asFails(B, "select * from public.submit_photo_verification($1, $2)", [photoId, proof], /Verification not found/);
+
+  await su("update public.dog_photo_verifications set code_issued_at = now() - interval '25 hours' where id = $1", [photoId]);
+  await asFails(A, "select * from public.submit_photo_verification($1, $2)", [photoId, proof], /expired/);
+  const [renewed] = await as(A, "select * from public.start_photo_verification($1)", [maxId]);
+  assert.equal(renewed.id, photoId);
+  assert.notEqual(renewed.code, photoCode, "an expired code is replaced");
+
+  const [sent] = await as(A, "select * from public.submit_photo_verification($1, $2)", [photoId, proof]);
+  assert.equal(sent.status, "pending");
+  await asFails(A, "select * from public.start_photo_verification($1)", [maxId], /already waiting/);
+  await asFails(A, "select * from public.submit_photo_verification($1, $2)", [photoId, proof], /already submitted/);
+
+  const notes = await as(ADM, "select data from public.notifications where type = 'photo_verification'");
+  assert.equal(notes.length, 1);
+  assert.equal(notes[0].data.verification_id, photoId);
+  assert.equal((await as(ADM, "select name from storage.objects where bucket_id = 'dog-verifications' and name = $1", [proof])).length, 1);
+  assert.equal((await as(B, "select name from storage.objects where bucket_id = 'dog-verifications' and name = $1", [proof])).length, 0, "other owners can't open it");
+});
+
+await step("photo verification: admin review awards the badge; a new main photo removes it", async () => {
+  await asFails(A, "select * from public.admin_list_photo_verifications()", [], /Only PawMatch administrators/);
+  await asFails(A, "select public.admin_review_photo_verification($1, 'approve')", [photoId], /Only PawMatch administrators/);
+  const [row] = await as(ADM, "select * from public.admin_list_photo_verifications()");
+  assert.equal(row.dog_name, "Max");
+  assert.equal(row.photo_path, proof);
+  await asFails(ADM, "select public.admin_review_photo_verification($1, 'reject', ' ')", [photoId], /add remarks/);
+  await as(ADM, "select public.admin_review_photo_verification($1, 'reject', 'The code is not readable')", [photoId]);
+  await asFails(ADM, "select public.admin_review_photo_verification($1, 'approve')", [photoId], /already been reviewed/);
+  const [no] = await as(A, "select title, body from public.notifications where type = 'photo_verification'");
+  assert.equal(no.title, "Photo verification not approved");
+  assert.equal(no.body, "The code is not readable");
+  assert.equal((await su("select photo_verified_at from public.dogs where id = $1", [maxId]))[0].photo_verified_at, null);
+
+  const [second] = await as(A, "select * from public.start_photo_verification($1)", [maxId]);
+  assert.notEqual(second.id, photoId, "a rejected owner can try again");
+  await as(A, "select * from public.submit_photo_verification($1, $2)", [second.id, proof]);
+  await as(ADM, "select public.admin_review_photo_verification($1, 'approve')", [second.id]);
+  assert.ok((await as(B, "select photo_verified_at from public.dogs where id = $1", [maxId]))[0].photo_verified_at, "others see the badge");
+  await asFails(A, "select * from public.start_photo_verification($1)", [maxId], /already Photo Verified/);
+
+  await as(A, "update public.dogs set description = 'Still the same photo' where id = $1", [maxId]);
+  assert.ok((await su("select photo_verified_at from public.dogs where id = $1", [maxId]))[0].photo_verified_at, "other edits keep the badge");
+  await as(A, "update public.dogs set img = 'https://x/other.jpg' where id = $1", [maxId]);
+  assert.equal((await su("select photo_verified_at from public.dogs where id = $1", [maxId]))[0].photo_verified_at, null);
+});
+
+await step("photo verification: only reviewed photos can be deleted, then the record is cleared", async () => {
+  const file = `${A}/verify-2.jpg`;
+  const remove = (uid) => as(uid, "delete from storage.objects where bucket_id = 'dog-verifications' and name = $1 returning name", [file]);
+  await as(A, "insert into storage.objects (bucket_id, name) values ('dog-verifications', $1)", [file]);
+  const [{ id }] = await as(A, "select * from public.start_photo_verification($1)", [maxId]);
+  await as(A, "select * from public.submit_photo_verification($1, $2)", [id, file]);
+
+  assert.equal((await remove(ADM)).length, 0, "a photo waiting for review is kept");
+  await asFails(ADM, "select public.admin_clear_reviewed_photo($1)", [id], /not been reviewed/);
+  await as(ADM, "select public.admin_review_photo_verification($1, 'approve')", [id]);
+
+  await asFails(A, "select public.admin_clear_reviewed_photo($1)", [id], /Only PawMatch administrators/);
+  await asFails(ADM, "select public.admin_clear_reviewed_photo($1)", [id], /still stored/);
+  assert.equal((await remove(B)).length, 0, "other owners can't delete it");
+  assert.equal((await remove(ADM)).length, 1);
+  await as(ADM, "select public.admin_clear_reviewed_photo($1)", [id]);
+
+  const [row] = (await as(ADM, "select * from public.admin_list_photo_verifications()")).filter((x) => x.id === id);
+  assert.equal(row.photo_path, null);
+  assert.equal(row.status, "approved", "the decision stays on record");
+  assert.ok((await su("select photo_verified_at from public.dogs where id = $1", [maxId]))[0].photo_verified_at, "the badge is kept");
+});
+
 await step("deleting a dog cascades its requests and submissions", async () => {
   await as(A, "delete from public.dogs where id=$1", [maxId]);
   assert.equal((await su("select id from public.match_requests where requester_dog_id is null and id=$1", [reqId])).length, 1);

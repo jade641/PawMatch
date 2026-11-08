@@ -2,6 +2,7 @@ import {
   ArrowLeft,
   ArrowRight,
   BadgeCheck,
+  Ban,
   Building2,
   Check,
   Eye,
@@ -166,6 +167,25 @@ export function BootScreen() {
         )}
       </View>
     </ScrollView>
+  );
+}
+
+/* ── Suspended account ──────────────────────────────────────────── */
+export function SuspendedScreen() {
+  const { session, signOut } = useApp();
+  const supportEmail = process.env.EXPO_PUBLIC_SUPPORT_EMAIL ?? "";
+  return (
+    <AuthLayout title="Account suspended" subtitle="The PawMatch team has suspended this account." icon={Ban}>
+      <View style={{ backgroundColor: T.bg, borderRadius: 16, padding: 16, gap: 8 }}>
+        <Text style={{ fontFamily: FONT_BOLD, color: T.dark }}>Reason</Text>
+        <Text style={{ fontFamily: FONT, color: T.dark, lineHeight: 20 }}>{session?.user.suspended_reason || "Not provided."}</Text>
+        <Text style={{ fontFamily: FONT, color: T.medium, lineHeight: 20 }}>
+          Your dogs are hidden from other owners and you can&apos;t send requests or messages.
+          {supportEmail ? ` If you think this is a mistake, email ${supportEmail}.` : " If you think this is a mistake, contact the PawMatch team."}
+        </Text>
+      </View>
+      <Btn title="Sign Out" variant="outline" onPress={signOut} style={{ marginTop: 20 }} />
+    </AuthLayout>
   );
 }
 

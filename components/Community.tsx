@@ -320,6 +320,7 @@ const NOTIFICATION_ICONS: Record<NotificationType, ComponentType<any>> = {
   verifier_application: UserCheck,
   verifier_review: ShieldCheck,
   user_report: Flag,
+  photo_verification: Camera,
   system: Info,
 };
 

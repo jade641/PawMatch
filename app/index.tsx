@@ -1,6 +1,6 @@
 import { Fragment, type ReactNode } from "react";
-import { AdminReportDetail, AdminReports, AdminVerifierDetail, AdminVerifiers } from "../components/Admin";
-import { BootScreen, ForgotPassword, Landing, Login, Register, ResetPassword, SetupRequired, VerifyEmail } from "../components/Auth";
+import { AdminPhotoDetail, AdminPhotos, AdminReportDetail, AdminReports, AdminRestricted, AdminVerifierDetail, AdminVerifiers } from "../components/Admin";
+import { BootScreen, ForgotPassword, Landing, Login, Register, ResetPassword, SetupRequired, SuspendedScreen, VerifyEmail } from "../components/Auth";
 import {
   ChangePasswordScreen,
   EditProfileScreen,
@@ -11,6 +11,7 @@ import {
 import { ConversationScreen, RequestsScreen } from "../components/Conversation";
 import { FilterScreen, HomeScreen, MatchScreen } from "../components/Home";
 import { AddDog, DogProfile, EditDog, MatchProfileScreen, OwnerProfile, OwnerSettings, SendRequest } from "../components/Profile";
+import { PhotoVerificationScreen } from "../components/PhotoVerification";
 import { BlockedUsersScreen } from "../components/Safety";
 import { Loading } from "../components/ui";
 import { AuditTrailScreen, VerifyChoose, VerifyStatus, VerifyUpload } from "../components/Verify";
@@ -49,6 +50,7 @@ const OWNER_SCREENS: Partial<Record<Screen, () => ReactNode>> = {
   requests: () => <RequestsScreen />,
   "dog-profile": () => <DogProfile />,
   "add-dog": () => <AddDog />,
+  "photo-verification": () => <PhotoVerificationScreen />,
   "edit-dog": () => <EditDog />,
   "owner-profile": () => <OwnerProfile />,
   "owner-settings": () => <OwnerSettings />,
@@ -73,6 +75,9 @@ const ADMIN_SCREENS: Partial<Record<Screen, () => ReactNode>> = {
   "admin-verifier-detail": () => <AdminVerifierDetail />,
   "admin-reports": () => <AdminReports />,
   "admin-report-detail": () => <AdminReportDetail />,
+  "admin-restricted": () => <AdminRestricted />,
+  "admin-photos": () => <AdminPhotos />,
+  "admin-photo-detail": () => <AdminPhotoDetail />,
 };
 
 const SHARED_SCREENS: Partial<Record<Screen, () => ReactNode>> = {
@@ -92,6 +97,7 @@ function PageRenderer() {
 
   // Signed-in screens never render without a session (e.g. mid sign-out).
   if (!session) return <Loading />;
+  if (session.user.suspended_at) return <SuspendedScreen />;
 
   const isOwner = !!session.owner;
   const isVerifier = !!session.verifier;

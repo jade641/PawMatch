@@ -1,6 +1,6 @@
-import { CheckCircle, Flag, Mail, Phone, Search, ShieldCheck, ShieldOff, UserCheck, XCircle } from "lucide-react-native";
+import { Ban, Camera, CheckCircle, EyeOff, Flag, Mail, PawPrint, Phone, RotateCcw, Search, ShieldCheck, ShieldOff, UserCheck, XCircle } from "lucide-react-native";
 import { useState } from "react";
-import { KeyboardAvoidingView, Linking, Platform, RefreshControl, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { Image, KeyboardAvoidingView, Linking, Platform, RefreshControl, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
 import {
   APPLICATION_STATUS,
   applicationStatus,
@@ -8,6 +8,7 @@ import {
   FONT_BOLD,
   FONT_MEDIUM,
   formatDate,
+  PHOTO_VERIFICATION_STATUS,
   REPORT_STATUS,
   reportReasonLabel,
   T,
@@ -16,8 +17,8 @@ import {
 import { useApp, useSession } from "../contexts/AppContext";
 import { useAsync } from "../hooks/useAsync";
 import * as api from "../services/api";
-import type { ApplicationStatus, ReportStatus, UserReport, VerifierApplication } from "../types";
-import { Avatar, Btn, Card, confirmAction, EmptyState, ErrorView, Header, InfoRow, Loading, SectionTitle, showMessage, Tag } from "./ui";
+import type { AdminPhotoVerification, ApplicationStatus, ReportStatus, RestrictedItem, UserReport, VerifierApplication } from "../types";
+import { Avatar, Btn, Card, confirmAction, DogImage, EmptyState, ErrorView, Header, InfoRow, Loading, SectionTitle, showMessage, Tag } from "./ui";
 
 /** All applications, refreshed when an admin alert arrives. */
 function useApplications() {
@@ -31,15 +32,17 @@ function useReports() {
   return useAsync(() => api.listReports(), [lastNotification?.id]);
 }
 
-/** Switches the Admin tab between verifier applications and user reports. */
-function AdminSwitcher({ current }: { current: "admin-verifiers" | "admin-reports" }) {
+/** Switches the Admin tab between applications, reports and restricted listings / accounts. */
+function AdminSwitcher({ current }: { current: "admin-verifiers" | "admin-reports" | "admin-restricted" | "admin-photos" }) {
   const { replace } = useApp();
   const items = [
     { id: "admin-verifiers" as const, label: "Applications", Icon: UserCheck },
     { id: "admin-reports" as const, label: "Reports", Icon: Flag },
+    { id: "admin-photos" as const, label: "Photos", Icon: Camera },
+    { id: "admin-restricted" as const, label: "Restricted", Icon: Ban },
   ];
   return (
-    <View style={{ flexDirection: "row", gap: 8, paddingHorizontal: 20, paddingTop: 12, backgroundColor: T.white }}>
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0, backgroundColor: T.white }} contentContainerStyle={{ gap: 8, paddingHorizontal: 20, paddingTop: 12 }}>
       {items.map(({ id, label, Icon }) => {
         const active = id === current;
         return (
@@ -49,11 +52,11 @@ function AdminSwitcher({ current }: { current: "admin-verifiers" | "admin-report
             accessibilityRole="tab"
             accessibilityState={{ selected: active }}
             style={{
-              flex: 1,
               flexDirection: "row",
               alignItems: "center",
               justifyContent: "center",
               gap: 6,
+              paddingHorizontal: 14,
               paddingVertical: 10,
               borderRadius: 12,
               borderWidth: 1.5,
@@ -62,11 +65,11 @@ function AdminSwitcher({ current }: { current: "admin-verifiers" | "admin-report
             }}
           >
             <Icon size={15} color={active ? T.primaryDark : T.medium} strokeWidth={2} />
-            <Text style={{ fontSize: 13, color: active ? T.primaryDark : T.medium, fontFamily: FONT_BOLD }}>{label}</Text>
+            <Text style={{ fontSize: 12, color: active ? T.primaryDark : T.medium, fontFamily: FONT_BOLD }} numberOfLines={1}>{label}</Text>
           </TouchableOpacity>
         );
       })}
-    </View>
+    </ScrollView>
   );
 }
 
@@ -523,6 +526,8 @@ export function AdminReportDetail() {
           </Card>
         )}
 
+        {!involved && <ModerationCard userId={r.reported_id} name={r.reported_name} />}
+
         {r.status === "open" &&
           (involved ? (
             <Card>
@@ -560,6 +565,418 @@ export function AdminReportDetail() {
               <View style={{ flexDirection: "row", gap: 10 }}>
                 <Btn title="Resolve" icon={CheckCircle} loading={deciding === "resolved"} disabled={!!deciding} onPress={() => decide("resolved")} style={{ flex: 1 }} />
                 <Btn title="Dismiss" icon={XCircle} variant="outline" loading={deciding === "dismissed"} disabled={!!deciding} onPress={() => decide("dismissed")} style={{ flex: 1 }} />
+              </View>
+            </Card>
+          ))}
+      </ScrollView>
+    </KeyboardAvoidingView>
+  );
+}
+
+/* ── Hide listings and suspend accounts ─────────────────────────── */
+function ModerationCard({ userId, name }: { userId: string; name: string }) {
+  const { showToast } = useApp();
+  const status = useAsync(() => api.getUserModeration(userId), [userId]);
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState<string | null>(null);
+
+  const run = async (key: string, action: () => Promise<void>, done: string) => {
+    setBusy(key);
+    try {
+      await action();
+      showToast(done, undefined, "success");
+      setReason("");
+      await status.reload(true);
+    } catch (e) {
+      showMessage("Couldn't save", api.errorMessage(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  /** Hiding and suspending show the reason to the user, so it can't be blank. */
+  const hasReason = () => {
+    if (reason.trim()) return true;
+    showMessage("Reason required", "Add a reason first. The user will see it.");
+    return false;
+  };
+
+  if (status.loading) return <Loading />;
+  if (status.error || !status.data) return <ErrorView message={status.error ?? "Couldn't load this account."} onRetry={() => status.reload()} />;
+  const { role, suspended_at, suspended_reason, dogs } = status.data;
+
+  const hide = (dogId: string, dogName: string) => {
+    if (!hasReason()) return;
+    confirmAction(
+      `Hide ${dogName}?`,
+      "Other owners won't see this listing, and its active match requests will be closed. You can restore it later.",
+      "Hide",
+      () => run(dogId, () => api.setDogHidden(dogId, true, reason), `${dogName} hidden`),
+      true,
+    );
+  };
+  const restore = (dogId: string, dogName: string) =>
+    confirmAction(`Restore ${dogName}?`, "Other owners will see this listing again.", "Restore", () =>
+      run(dogId, () => api.setDogHidden(dogId, false), `${dogName} restored`),
+    );
+  const suspend = () => {
+    if (!hasReason()) return;
+    confirmAction(
+      `Suspend ${name}?`,
+      "They won't be able to use PawMatch, all their dogs will be hidden, and their active match requests will be closed. You can reinstate them later.",
+      "Suspend",
+      () => run("account", () => api.setUserSuspended(userId, true, reason), `${name} suspended`),
+      true,
+    );
+  };
+  const reinstate = () =>
+    confirmAction(`Reinstate ${name}?`, "They'll be able to use PawMatch again. Closed requests stay closed.", "Reinstate", () =>
+      run("account", () => api.setUserSuspended(userId, false), `${name} reinstated`),
+    );
+
+  return (
+    <Card style={{ gap: 12 }}>
+      <SectionTitle title="Moderation" right={<Tag label={suspended_at ? "Suspended" : "Active"} tone={suspended_at ? "danger" : "success"} />} />
+      {suspended_at ? (
+        <Text style={{ fontSize: 13, color: T.dark, fontFamily: FONT, lineHeight: 19 }}>
+          Suspended {formatDate(suspended_at)}: {suspended_reason}
+        </Text>
+      ) : (
+        <TextInput
+          value={reason}
+          onChangeText={setReason}
+          placeholder="Reason (required to hide or suspend) — the user will see this"
+          placeholderTextColor={T.light}
+          multiline
+          maxLength={500}
+          style={{
+            minHeight: 72,
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: T.border,
+            backgroundColor: T.bg,
+            padding: 12,
+            fontSize: 14,
+            color: T.dark,
+            fontFamily: FONT,
+            textAlignVertical: "top",
+          }}
+        />
+      )}
+
+      {dogs.map((d) => (
+        <View key={d.id} style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+          <DogImage uri={d.img} width={48} height={48} />
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 14, color: T.dark, fontFamily: FONT_BOLD }} numberOfLines={1}>{d.name}</Text>
+            <Text style={{ fontSize: 12, color: d.hidden_at ? T.error : T.medium, fontFamily: FONT }} numberOfLines={2}>
+              {d.hidden_at ? `Hidden: ${d.hidden_reason ?? ""}` : d.breed}
+            </Text>
+          </View>
+          {d.hidden_at ? (
+            <Btn title="Restore" icon={RotateCcw} size="small" variant="outline" loading={busy === d.id} disabled={!!busy} onPress={() => restore(d.id, d.name)} />
+          ) : (
+            <Btn title="Hide" icon={EyeOff} size="small" variant="danger" loading={busy === d.id} disabled={!!busy || !!suspended_at} onPress={() => hide(d.id, d.name)} />
+          )}
+        </View>
+      ))}
+
+      {role === "admin" ? (
+        <Text style={{ fontSize: 12, color: T.medium, fontFamily: FONT }}>Administrator accounts can&apos;t be suspended.</Text>
+      ) : suspended_at ? (
+        <Btn title="Reinstate account" icon={RotateCcw} variant="outline" loading={busy === "account"} disabled={!!busy} onPress={reinstate} />
+      ) : (
+        <Btn title="Suspend account" icon={Ban} variant="danger" loading={busy === "account"} disabled={!!busy} onPress={suspend} />
+      )}
+    </Card>
+  );
+}
+
+export function AdminRestricted() {
+  const { goBack, canGoBack, showToast } = useApp();
+  const items = useAsync(() => api.listRestricted(), []);
+  const [busy, setBusy] = useState<string | null>(null);
+
+  const undo = (item: RestrictedItem) => {
+    const isDog = item.kind === "dog";
+    confirmAction(
+      isDog ? `Restore ${item.title}?` : `Reinstate ${item.title}?`,
+      isDog ? "Other owners will see this listing again." : "They'll be able to use PawMatch again. Closed requests stay closed.",
+      isDog ? "Restore" : "Reinstate",
+      async () => {
+        setBusy(item.target_id);
+        try {
+          await (isDog ? api.setDogHidden(item.target_id, false) : api.setUserSuspended(item.target_id, false));
+          showToast(isDog ? `${item.title} restored` : `${item.title} reinstated`, undefined, "success");
+          await items.reload(true);
+        } catch (e) {
+          showMessage("Couldn't save", api.errorMessage(e));
+        } finally {
+          setBusy(null);
+        }
+      },
+    );
+  };
+
+  return (
+    <View style={{ flex: 1, backgroundColor: T.bg }}>
+      <Header title="Restricted" subtitle="Hidden listings and suspended accounts" icon={Ban} onBack={canGoBack ? goBack : undefined} />
+      <AdminSwitcher current="admin-restricted" />
+      <ScrollView
+        style={{ marginTop: 12 }}
+        contentContainerStyle={{ padding: 20, gap: 12, paddingBottom: 32 }}
+        refreshControl={<RefreshControl refreshing={false} onRefresh={() => items.reload(true)} tintColor={T.primary} />}
+      >
+        {items.loading ? (
+          <Loading />
+        ) : items.error ? (
+          <ErrorView message={items.error} onRetry={() => items.reload()} />
+        ) : (items.data ?? []).length === 0 ? (
+          <EmptyState icon={Ban} title="Nothing restricted" message="Listings you hide and accounts you suspend from a report will appear here." />
+        ) : (
+          (items.data ?? []).map((item) => {
+            const Icon = item.kind === "dog" ? PawPrint : Ban;
+            return (
+              <Card key={`${item.kind}:${item.target_id}`} style={{ gap: 8 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+                  <View style={{ width: 40, height: 40, borderRadius: 13, backgroundColor: T.errorLight, alignItems: "center", justifyContent: "center" }}>
+                    <Icon size={19} color={T.error} strokeWidth={2} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 15, color: T.dark, fontFamily: FONT_BOLD }} numberOfLines={1}>{item.title}</Text>
+                    <Text style={{ fontSize: 12, color: T.medium, fontFamily: FONT }} numberOfLines={1}>{item.subtitle}</Text>
+                  </View>
+                  <Tag label={item.kind === "dog" ? "Hidden" : "Suspended"} tone="danger" />
+                </View>
+                <Text style={{ fontSize: 13, color: T.dark, fontFamily: FONT, lineHeight: 19 }}>{item.reason}</Text>
+                <Text style={{ fontSize: 11, color: T.medium, fontFamily: FONT }}>
+                  {timeAgo(item.restricted_at)}
+                  {item.restricted_by ? ` by ${item.restricted_by}` : ""}
+                </Text>
+                <Btn
+                  title={item.kind === "dog" ? "Restore listing" : "Reinstate account"}
+                  icon={RotateCcw}
+                  size="small"
+                  variant="outline"
+                  loading={busy === item.target_id}
+                  disabled={!!busy}
+                  onPress={() => undo(item)}
+                />
+              </Card>
+            );
+          })
+        )}
+      </ScrollView>
+    </View>
+  );
+}
+
+/* ── Photo Verified badge ───────────────────────────────────────── */
+/** All submitted photos, refreshed when an admin alert arrives. */
+function usePhotoVerifications() {
+  const { lastNotification } = useApp();
+  return useAsync(() => api.listPhotoVerifications(), [lastNotification?.id]);
+}
+
+function PhotoCard({ v }: { v: AdminPhotoVerification }) {
+  const { navigate } = useApp();
+  const status = PHOTO_VERIFICATION_STATUS[v.status];
+  return (
+    <Card onPress={() => navigate("admin-photo-detail", { verificationId: v.id })} style={{ flexDirection: "row", gap: 12 }}>
+      <DogImage uri={v.dog_img} width={48} height={48} />
+      <View style={{ flex: 1, gap: 2 }}>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+          <Text style={{ fontSize: 15, color: T.dark, fontFamily: FONT_BOLD, flexShrink: 1 }} numberOfLines={1}>{v.dog_name}</Text>
+          <Tag label={status.label} tone={status.tone} />
+        </View>
+        <Text style={{ fontSize: 13, color: T.dark, fontFamily: FONT_MEDIUM }} numberOfLines={1}>{v.owner_name}</Text>
+        <Text style={{ fontSize: 11, color: T.light, fontFamily: FONT }}>{timeAgo(v.submitted_at)}</Text>
+      </View>
+    </Card>
+  );
+}
+
+export function AdminPhotos() {
+  const { goBack, canGoBack } = useApp();
+  const photos = usePhotoVerifications();
+  const [filter, setFilter] = useState<"all" | AdminPhotoVerification["status"]>("pending");
+  const all = photos.data ?? [];
+  const list = all.filter((v) => filter === "all" || v.status === filter);
+  const filters: { id: typeof filter; label: string }[] = [
+    { id: "pending", label: "Waiting" },
+    { id: "approved", label: "Approved" },
+    { id: "rejected", label: "Not Approved" },
+    { id: "all", label: "All" },
+  ];
+
+  return (
+    <View style={{ flex: 1, backgroundColor: T.bg }}>
+      <Header title="Photo Verification" subtitle="Photos sent for the badge" icon={Camera} onBack={canGoBack ? goBack : undefined} />
+      <AdminSwitcher current="admin-photos" />
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0, backgroundColor: T.white }} contentContainerStyle={{ gap: 8, padding: 12, paddingHorizontal: 20 }}>
+        {filters.map((f) => (
+          <TouchableOpacity
+            key={f.id}
+            onPress={() => setFilter(f.id)}
+            style={{ paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: filter === f.id ? T.primary : T.bg }}
+          >
+            <Text style={{ fontSize: 13, color: filter === f.id ? "#fff" : T.dark, fontFamily: FONT_BOLD }}>
+              {f.label}
+              {f.id !== "all" ? ` (${all.filter((v) => v.status === f.id).length})` : ""}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+      <ScrollView
+        contentContainerStyle={{ padding: 20, gap: 12, paddingBottom: 32 }}
+        refreshControl={<RefreshControl refreshing={false} onRefresh={() => photos.reload(true)} tintColor={T.primary} />}
+      >
+        {photos.loading ? (
+          <Loading />
+        ) : photos.error ? (
+          <ErrorView message={photos.error} onRetry={() => photos.reload()} />
+        ) : list.length === 0 ? (
+          <EmptyState
+            icon={Camera}
+            title={filter === "pending" ? "No photos waiting" : "No photos found"}
+            message={filter === "pending" ? "Photos sent by owners will appear here and you'll get an alert." : "Nothing matches this filter."}
+          />
+        ) : (
+          list.map((v) => <PhotoCard key={v.id} v={v} />)
+        )}
+      </ScrollView>
+    </View>
+  );
+}
+
+export function AdminPhotoDetail() {
+  const { goBack, params, showToast } = useApp();
+  const session = useSession();
+  const verificationId: string = params.verificationId;
+  const photos = usePhotoVerifications();
+  const v = photos.data?.find((x) => x.id === verificationId);
+  const photoUrl = useAsync(() => (v?.photo_path ? api.getVerificationPhotoUrl(v.photo_path) : Promise.resolve(null)), [v?.photo_path]);
+  const [notes, setNotes] = useState("");
+  const [deciding, setDeciding] = useState<"approve" | "reject" | null>(null);
+
+  if (photos.loading || !v) {
+    return (
+      <View style={{ flex: 1, backgroundColor: T.bg }}>
+        <Header title="Photo Verification" onBack={goBack} />
+        {photos.loading ? <Loading /> : <ErrorView message={photos.error ?? "Photo not found."} onRetry={() => photos.reload()} />}
+      </View>
+    );
+  }
+
+  const status = PHOTO_VERIFICATION_STATUS[v.status];
+
+  const decide = (decision: "approve" | "reject") => {
+    if (decision === "reject" && !notes.trim()) {
+      showMessage("Remarks required", "Tell the owner what to fix, e.g. the code isn't readable.");
+      return;
+    }
+    confirmAction(
+      decision === "approve" ? `Verify ${v.dog_name}?` : "Reject this photo?",
+      decision === "approve"
+        ? `${v.dog_name} will show the Photo Verified badge to every owner.`
+        : `${v.owner_name} will see your remarks and can try again with a new code.`,
+      decision === "approve" ? "Verify" : "Reject",
+      async () => {
+        setDeciding(decision);
+        try {
+          await api.reviewPhotoVerification(v.id, decision, notes);
+          showToast(decision === "approve" ? "Badge awarded" : "Photo rejected", "The owner has been notified.", "success");
+          setNotes("");
+          await photos.reload(true);
+        } catch (e) {
+          showMessage("Couldn't save decision", api.errorMessage(e));
+        } finally {
+          setDeciding(null);
+        }
+      },
+      decision === "reject",
+    );
+  };
+
+  return (
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: T.bg }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+      <Header title={v.dog_name} subtitle={`${v.dog_breed} • ${v.owner_name}`} icon={Camera} onBack={goBack} right={<Tag label={status.label} tone={status.tone} />} />
+      <ScrollView contentContainerStyle={{ padding: 20, gap: 16, paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
+        <Card style={{ alignItems: "center", gap: 4 }}>
+          <Text style={{ fontSize: 13, color: T.medium, fontFamily: FONT }}>The paper must show this code</Text>
+          <Text selectable style={{ fontSize: 30, color: T.primaryDark, fontFamily: FONT_BOLD, letterSpacing: 2 }}>{v.code}</Text>
+        </Card>
+
+        <Card style={{ gap: 10 }}>
+          <SectionTitle title="Verification photo" />
+          {!v.photo_path ? (
+            <Text style={{ fontSize: 13, color: T.medium, fontFamily: FONT }}>This photo was deleted after review.</Text>
+          ) : photoUrl.error ? (
+            <ErrorView message={photoUrl.error} onRetry={() => photoUrl.reload()} />
+          ) : !photoUrl.data ? (
+            <Loading message="Loading photo…" />
+          ) : (
+            <TouchableOpacity onPress={() => Linking.openURL(photoUrl.data as string).catch(() => undefined)} activeOpacity={0.9} accessibilityRole="imagebutton" accessibilityLabel="Open full size">
+              <Image source={{ uri: photoUrl.data }} style={{ width: "100%", height: 320, borderRadius: 12, backgroundColor: T.bg }} resizeMode="contain" />
+            </TouchableOpacity>
+          )}
+        </Card>
+
+        <Card style={{ gap: 10 }}>
+          <SectionTitle title="Photo on the listing" />
+          <DogImage uri={v.dog_img} width="100%" height={240} />
+        </Card>
+
+        {v.reviewed_at && (
+          <Card style={{ gap: 6 }}>
+            <SectionTitle title="Decision" />
+            <Text style={{ fontSize: 14, color: T.dark, fontFamily: FONT_MEDIUM }}>
+              {status.label} on {formatDate(v.reviewed_at)}
+              {v.reviewer_name ? ` by ${v.reviewer_name}` : ""}
+            </Text>
+            {v.review_notes ? <Text style={{ fontSize: 13, color: T.dark, fontFamily: FONT }}>Remarks: {v.review_notes}</Text> : null}
+          </Card>
+        )}
+
+        {v.status === "pending" &&
+          (v.owner_id === session.user.id ? (
+            <Card>
+              <Text style={{ fontSize: 13, color: T.medium, fontFamily: FONT, lineHeight: 19 }}>
+                This is your own dog. Another administrator has to review it.
+              </Text>
+            </Card>
+          ) : (
+            <Card style={{ gap: 12 }}>
+              <SectionTitle title="Your decision" />
+              {["The code on the paper matches exactly", "The dog is next to the code", "It looks like the same dog as the listing", "It isn't a photo of a screen or an edited image"].map((c) => (
+                <View key={c} style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                  <CheckCircle size={16} color={T.success} strokeWidth={2.25} />
+                  <Text style={{ flex: 1, fontSize: 13, color: T.dark, fontFamily: FONT }}>{c}</Text>
+                </View>
+              ))}
+              <TextInput
+                value={notes}
+                onChangeText={setNotes}
+                placeholder="Remarks (required when rejecting) — the owner will see this"
+                placeholderTextColor={T.light}
+                multiline
+                maxLength={1000}
+                style={{
+                  minHeight: 80,
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: T.border,
+                  backgroundColor: T.bg,
+                  padding: 12,
+                  fontSize: 14,
+                  color: T.dark,
+                  fontFamily: FONT,
+                  textAlignVertical: "top",
+                }}
+              />
+              <View style={{ flexDirection: "row", gap: 10 }}>
+                <Btn title="Verify" icon={CheckCircle} loading={deciding === "approve"} disabled={!!deciding} onPress={() => decide("approve")} style={{ flex: 1 }} />
+                <Btn title="Reject" icon={XCircle} variant="danger" loading={deciding === "reject"} disabled={!!deciding} onPress={() => decide("reject")} style={{ flex: 1 }} />
               </View>
             </Card>
           ))}
